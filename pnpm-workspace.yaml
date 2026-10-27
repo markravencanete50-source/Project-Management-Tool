@@ -1,0 +1,5 @@
+allowBuilds:
+  sharp: false
+  unrs-resolver: false
+  "@firebase/util": true
+  protobufjs: true
