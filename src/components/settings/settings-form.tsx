@@ -21,11 +21,13 @@ export const TEMPLATE_PLACEHOLDERS: { key: string; meaning: string }[] = [
   { key: "{{projectTitle}}", meaning: "Project title" },
   { key: "{{scope}}", meaning: "Project description and scope" },
   { key: "{{price}}", meaning: "Contract value with currency" },
+  { key: "{{currency}}", meaning: "Currency code" },
   { key: "{{paymentSchedule}}", meaning: "Payment schedule lines" },
   { key: "{{revisionAllowance}}", meaning: "Included revision rounds" },
   { key: "{{startDate}}", meaning: "Start date" },
   { key: "{{deadline}}", meaning: "Deadline" },
-  { key: "{{date}}", meaning: "Agreement date" },
+  { key: "{{agreementDate}}", meaning: "Agreement date" },
+  { key: "{{governingLaw}}", meaning: "Governing law (Republic of the Philippines)" },
 ];
 
 export function SettingsForm({ initial, defaultTemplate }: { initial: SettingsInput; defaultTemplate: string }) {

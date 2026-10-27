@@ -7,7 +7,6 @@ import { requireAdmin } from "@/lib/auth/session";
 import { deleteAsset, projectFolder, uploadBuffer } from "@/lib/cloudinary";
 import { todayIso } from "@/lib/dates";
 import { appUrl, env } from "@/lib/env";
-import { sendAgreementReady } from "@/lib/email";
 import { db } from "@/lib/firebase/admin";
 import { sortSchedule } from "@/lib/finance";
 import { renderAgreementPdf } from "@/lib/pdf/agreement-document";
@@ -214,8 +213,7 @@ export async function sendAgreement(projectId: string, agreementId: string): Pro
 
     const signPath = `/portal/projects/${project.id}/agreement`;
     try {
-      await issueClientLink(client, "agreement", signPath);
-      await sendAgreementReady({ to: client.email, clientName: client.name, projectTitle: project.title, url: appUrl(signPath) });
+      await issueClientLink(client, "agreement", signPath, project.title);
     } catch (err) {
       console.error("sendAgreement email failed", err);
       throw new UserError("The agreement was marked as sent, but the email could not be sent. Use Send again to retry.");

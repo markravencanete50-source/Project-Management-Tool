@@ -2,7 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
 import { appUrl, env } from "@/lib/env";
-import { sendSignInLink } from "@/lib/email";
+import { sendAgreementReady, sendSignInLink } from "@/lib/email";
 import { sha256Hex } from "@/lib/pdf/hash";
 import { safeNextPath } from "@/lib/validation/agreements";
 import { col } from "@/server/data/refs";
@@ -40,6 +40,7 @@ export async function issueClientLink(
   client: Pick<Client, "id" | "name" | "email">,
   purpose: LinkPurpose,
   nextPath?: string,
+  projectTitle?: string,
 ): Promise<void> {
   const token = randomBytes(32).toString("base64url");
   const now = Date.now();
@@ -56,10 +57,11 @@ export async function issueClientLink(
       nextPath: safeNextPath(nextPath),
       createdAt: Timestamp.fromMillis(now),
     });
-  await sendSignInLink({
-    to: email,
-    name: client.name,
-    url: appUrl(`/auth/callback?token=${token}`),
-    purpose,
-  });
+  const url = appUrl(`/auth/callback?token=${token}`);
+  // Agreement emails name the project; every other purpose uses the generic sign-in email.
+  if (purpose === "agreement" && projectTitle) {
+    await sendAgreementReady({ to: email, clientName: client.name, projectTitle, url });
+  } else {
+    await sendSignInLink({ to: email, name: client.name, url, purpose });
+  }
 }
