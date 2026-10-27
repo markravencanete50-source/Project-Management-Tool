@@ -109,7 +109,7 @@ export function PaymentFormDialog({
               : `Record money you received, in ${currency}. The client is emailed a confirmation.`}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4" noValidate>
+        <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 gap-4" noValidate>
           <FieldGroup>
             <Field data-invalid={Boolean(errors.amount)}>
               <FieldLabel htmlFor="payment-amount">Amount ({currency})</FieldLabel>

@@ -107,13 +107,13 @@ export function ScheduleEditor({
             The schedule lines must add up to the contract value. Leave the schedule empty if you do not want due dates.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4" noValidate>
+        <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 gap-4" noValidate>
           <Field>
             <FieldLabel htmlFor="schedule-contract">Contract value ({currency})</FieldLabel>
             <Input id="schedule-contract" inputMode="decimal" autoComplete="off" {...register("contractValue")} />
           </Field>
 
-          <div className="grid gap-3">
+          <div className="grid grid-cols-1 gap-3">
             {fields.map((field, index) => (
               <div key={field.id} className="grid grid-cols-2 gap-3 rounded-lg p-3 ring-1 ring-foreground/10">
                 <Field className="col-span-2">

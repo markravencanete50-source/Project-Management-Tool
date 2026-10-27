@@ -11,13 +11,13 @@ export async function PortalPaymentsSection({ projectId }: { projectId: string }
   const { currency } = project;
 
   return (
-    <section className="grid gap-6" aria-labelledby="portal-payments-heading">
+    <section className="grid grid-cols-1 gap-6" aria-labelledby="portal-payments-heading">
       <h2 id="portal-payments-heading" className="text-lg font-semibold">
         Payments
       </h2>
       <PaymentSummary contractValue={project.contractValue} finance={finance} currency={currency} showOverdue={false} />
 
-      <div className="grid gap-3">
+      <div className="grid grid-cols-1 gap-3">
         <h3 className="text-base font-medium">Payment schedule</h3>
         {finance.lines.length === 0 ? (
           <p className="text-sm text-muted-foreground">No payment schedule has been set for this project.</p>
@@ -28,7 +28,7 @@ export async function PortalPaymentsSection({ projectId }: { projectId: string }
         )}
       </div>
 
-      <div className="grid gap-3">
+      <div className="grid grid-cols-1 gap-3">
         <h3 className="text-base font-medium">Payments received</h3>
         {payments.length === 0 ? (
           <Empty className="border">

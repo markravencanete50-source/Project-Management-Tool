@@ -43,7 +43,7 @@ export default async function DashboardPage() {
         </StatCard>
       </div>
 
-      <section className="mt-8 grid gap-4" aria-labelledby="charts-heading">
+      <section className="mt-8 grid grid-cols-1 gap-4" aria-labelledby="charts-heading">
         <h2 id="charts-heading" className="text-base font-semibold">
           Last 12 months
         </h2>
@@ -87,7 +87,7 @@ export default async function DashboardPage() {
         </Card>
       </section>
 
-      <section className="mt-8 grid gap-4" aria-labelledby="attention-heading">
+      <section className="mt-8 grid grid-cols-1 gap-4" aria-labelledby="attention-heading">
         <h2 id="attention-heading" className="text-base font-semibold">
           Needs attention
         </h2>

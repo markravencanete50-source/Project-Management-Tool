@@ -40,3 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 !.env.example
+
+# e2e screenshots
+/tests/e2e/screenshots/
+
+# emulator logs
+*-debug.log

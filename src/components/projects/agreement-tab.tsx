@@ -158,7 +158,7 @@ function CurrentAgreement({ agreement }: { agreement: Agreement }) {
             <Detail label="Signed PDF SHA-256" value={agreement.signedPdfHash} mono />
           </dl>
         ) : (
-          <dl className="grid gap-3">
+          <dl className="grid grid-cols-1 gap-3">
             <Detail label="Document SHA-256" value={agreement.pdfHash} mono />
           </dl>
         )}

@@ -2,6 +2,7 @@
 
 import { Bar, BarChart, LabelList, ResponsiveContainer, XAxis } from "recharts";
 import { formatMoneyCompact, type Currency } from "@/lib/money";
+import { ChartScroll } from "@/components/dashboard/chart-scroll";
 import type { EarningsPoint } from "@/components/dashboard/calc";
 
 /**
@@ -11,7 +12,7 @@ import type { EarningsPoint } from "@/components/dashboard/calc";
 export function EarningsChart({ currency, points }: { currency: Currency; points: EarningsPoint[] }) {
   const total = points.reduce((sum, p) => sum + p.amount, 0);
   return (
-    <div className="overflow-x-auto">
+    <ChartScroll>
       <div
         className="h-48 min-w-[600px]"
         role="img"
@@ -32,6 +33,6 @@ export function EarningsChart({ currency, points }: { currency: Currency; points
           </BarChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </ChartScroll>
   );
 }

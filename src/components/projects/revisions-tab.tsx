@@ -17,7 +17,7 @@ export async function RevisionsTab({ projectId }: { projectId: string }) {
         <CardHeader>
           <CardTitle>Revision allowance</CardTitle>
           <CardDescription>
-            {data.counted} of {data.allowance} included revision{data.allowance === 1 ? "" : "s"} used
+            {Math.min(data.counted, data.allowance)} of {data.allowance} included revision{data.allowance === 1 ? "" : "s"} used
             {over ? `, ${data.counted - data.allowance} extra billed as change orders` : ""}. Cancelled revisions do not count.
           </CardDescription>
         </CardHeader>

@@ -2,17 +2,8 @@
 
 import type { ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { PROJECT_TABS, type ProjectTab } from "@/components/projects-core/tab-values";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-export const PROJECT_TABS = [
-  { value: "overview", label: "Overview" },
-  { value: "payments", label: "Payments" },
-  { value: "agreement", label: "Agreement" },
-  { value: "revisions", label: "Revisions" },
-  { value: "activity", label: "Activity" },
-] as const;
-
-export type ProjectTab = (typeof PROJECT_TABS)[number]["value"];
 
 /**
  * Tab bar driven by the ?tab= search param. The server renders only the active

@@ -17,7 +17,7 @@ export async function PaymentsTab({ projectId }: { projectId: string }) {
   const { currency } = project;
 
   return (
-    <div className="grid gap-8">
+    <div className="grid grid-cols-1 gap-8">
       <PaymentSummary contractValue={project.contractValue} finance={finance} currency={currency} />
 
       {!finance.scheduleMatches ? (
@@ -31,7 +31,7 @@ export async function PaymentsTab({ projectId }: { projectId: string }) {
         </Alert>
       ) : null}
 
-      <section className="grid gap-3" aria-labelledby="schedule-heading">
+      <section className="grid grid-cols-1 gap-3" aria-labelledby="schedule-heading">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 id="schedule-heading" className="text-base font-semibold">
             Payment schedule
@@ -66,7 +66,7 @@ export async function PaymentsTab({ projectId }: { projectId: string }) {
         )}
       </section>
 
-      <section className="grid gap-3" aria-labelledby="payments-heading">
+      <section className="grid grid-cols-1 gap-3" aria-labelledby="payments-heading">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 id="payments-heading" className="text-base font-semibold">
             Payments received

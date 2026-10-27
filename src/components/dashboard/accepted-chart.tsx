@@ -1,13 +1,14 @@
 "use client";
 
 import { Bar, BarChart, LabelList, ResponsiveContainer, XAxis } from "recharts";
+import { ChartScroll } from "@/components/dashboard/chart-scroll";
 import type { AcceptedPoint } from "@/components/dashboard/calc";
 
 /** Projects accepted per month. Counts are printed on every bar. */
 export function AcceptedChart({ points }: { points: AcceptedPoint[] }) {
   const total = points.reduce((sum, p) => sum + p.count, 0);
   return (
-    <div className="overflow-x-auto">
+    <ChartScroll>
       <div
         className="h-48 min-w-[600px]"
         role="img"
@@ -28,6 +29,6 @@ export function AcceptedChart({ points }: { points: AcceptedPoint[] }) {
           </BarChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </ChartScroll>
   );
 }

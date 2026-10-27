@@ -21,7 +21,7 @@ function adminApp(): App {
       projectId: e.FIREBASE_ADMIN_PROJECT_ID,
       clientEmail: e.FIREBASE_ADMIN_CLIENT_EMAIL,
       // Vercel and .env files store the key with literal "\n" sequences.
-      privateKey: e.FIREBASE_ADMIN_PRIVATE_KEY.replace(/\n/g, "\n"),
+      privateKey: e.FIREBASE_ADMIN_PRIVATE_KEY.replace(/\\n/g, "\n"),
     }),
   });
 }
@@ -31,7 +31,13 @@ let firestore: Firestore | undefined;
 export function db(): Firestore {
   if (!firestore) {
     firestore = getFirestore(adminApp());
-    firestore.settings({ ignoreUndefinedProperties: true });
+    try {
+      firestore.settings({ ignoreUndefinedProperties: true });
+    } catch {
+      // Each route chunk gets its own copy of this module but getFirestore()
+      // returns one shared instance, and settings() may only be called once.
+      // If another chunk got there first, its settings already apply.
+    }
   }
   return firestore;
 }

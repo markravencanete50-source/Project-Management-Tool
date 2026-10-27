@@ -6,7 +6,7 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/session";
 import { deleteAsset, projectFolder, uploadBuffer } from "@/lib/cloudinary";
 import { todayIso } from "@/lib/dates";
-import { appUrl, env } from "@/lib/env";
+import { env } from "@/lib/env";
 import { db } from "@/lib/firebase/admin";
 import { sortSchedule } from "@/lib/finance";
 import { renderAgreementPdf } from "@/lib/pdf/agreement-document";
