@@ -10,6 +10,9 @@ const schema = z.object({
   CLOUDINARY_API_KEY: z.string().min(1).optional(),
   CLOUDINARY_API_SECRET: z.string().min(1).optional(),
   RESEND_API_KEY: z.string().min(1).optional(),
+  // Optional. A personal Wise API token turns on Wise as the dashboard's exchange rate source.
+  // Without it the dashboard uses free public mid-market rates.
+  WISE_API_TOKEN: z.string().min(1).optional(),
   EMAIL_FROM: z.string().min(1).optional(),
   ADMIN_EMAIL: z.email(),
   APP_URL: z.url(),

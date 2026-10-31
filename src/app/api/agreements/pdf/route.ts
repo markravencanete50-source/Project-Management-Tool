@@ -2,9 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { downloadBuffer, isInFolder } from "@/lib/cloudinary";
 import { canAccessProject } from "@/server/data/access";
-import { fromDoc } from "@/server/data/convert";
+import { fromDoc, projectFromDoc } from "@/server/data/convert";
 import { col } from "@/server/data/refs";
-import type { Agreement, Project } from "@/lib/types";
+import type { Agreement } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   if (!ID.test(projectId) || !ID.test(agreementId)) return new NextResponse("Not found", { status: 404 });
 
   const projectSnap = await col.projects().doc(projectId).get();
-  if (!projectSnap.exists || !canAccessProject(session, fromDoc<Project>(projectSnap))) {
+  if (!projectSnap.exists || !canAccessProject(session, projectFromDoc(projectSnap))) {
     return new NextResponse("Not found", { status: 404 });
   }
   const agreementSnap = await col.agreements(projectId).doc(agreementId).get();

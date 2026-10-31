@@ -4,8 +4,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import { db } from "@/lib/firebase/admin";
 import { requireAdmin } from "@/lib/auth/session";
 import { col } from "@/server/data/refs";
-import { fromDoc, fromDocs } from "@/server/data/convert";
+import { fromDocs, prospectFromDoc } from "@/server/data/convert";
 import { getSettings } from "@/server/data/settings";
+import { newProjectFields, prospectProjectInput } from "@/lib/engagement";
 import { logActivity } from "@/server/activity";
 import { run, UserError } from "@/server/action";
 import {
@@ -127,7 +128,10 @@ export async function moveStage(id: string, stage: ProspectStage, lostReason?: L
   });
 }
 
-/** Turn a prospect into a client (existing or new) plus a draft project. Returns the project id. */
+/**
+ * Turn a prospect into a client (existing or new) plus a project of the same
+ * kind (a draft for fixed, active for retainer and tasks). Returns the project id.
+ */
 export async function convertProspect(id: string): Promise<ActionResult<{ projectId: string }>> {
   return run(async () => {
     await requireAdmin();
@@ -148,7 +152,7 @@ export async function convertProspect(id: string): Promise<ActionResult<{ projec
     const projectId = await db().runTransaction(async (tx) => {
       const pSnap = await tx.get(prospectRef);
       if (!pSnap.exists) throw new UserError("Prospect not found");
-      const prospect = fromDoc<Prospect>(pSnap);
+      const prospect = prospectFromDoc(pSnap);
       if (prospect.convertedProjectId || prospect.convertedClientId) {
         throw new UserError("This prospect has already been converted");
       }
@@ -179,17 +183,10 @@ export async function convertProspect(id: string): Promise<ActionResult<{ projec
         });
       }
 
+      // The project has the same kind as the prospect. Fixed is a draft awaiting
+      // its agreement, exactly as before; retainer and tasks start active.
       tx.set(projectRef, {
-        clientId,
-        title: prospect.service.trim() || "New project",
-        description: "",
-        status: "draft",
-        startDate: null,
-        deadline: null,
-        acceptedAt: null,
-        currency: prospect.currency,
-        contractValue: prospect.estimatedValue,
-        revisionAllowance: settings.defaultRevisionAllowance,
+        ...newProjectFields(prospectProjectInput(prospect, clientId, settings.defaultRevisionAllowance)),
         archivedAt: null,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -209,7 +206,7 @@ export async function convertProspect(id: string): Promise<ActionResult<{ projec
 
       logActivity(tx, {
         type: "prospect_converted",
-        message: `${prospect.name} converted: ${clientCreated ? "new client created" : "existing client used"}, draft project created`,
+        message: `${prospect.name} converted: ${clientCreated ? "new client created" : "existing client used"}, ${prospect.engagementKind === "fixed" ? "draft project" : `${prospect.engagementKind} project`} created`,
         actor: "admin",
         visibility: "internal",
         prospectId,

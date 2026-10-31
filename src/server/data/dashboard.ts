@@ -3,7 +3,8 @@ import type { DocumentReference } from "firebase-admin/firestore";
 import { requireAdmin } from "@/lib/auth/session";
 import { db } from "@/lib/firebase/admin";
 import { col } from "@/server/data/refs";
-import { fromDocs } from "@/server/data/convert";
+import { loadRateTable } from "@/server/data/fx";
+import { fromDoc, fromDocs, projectsFromDocs, prospectsFromDocs } from "@/server/data/convert";
 import {
   buildDashboard,
   type DashboardData,
@@ -12,32 +13,36 @@ import {
   type DashProspect,
   type DashRevision,
   type DashScheduleLine,
+  type DashTask,
+  type DashTimeEntry,
 } from "@/components/dashboard/calc";
-import type { Client, Payment, Project, Prospect, Revision, ScheduleLine } from "@/lib/types";
+import type { Client, Payment, Revision, ScheduleLine, Task, TimeEntry } from "@/lib/types";
 
 const projectIdOf = (ref: DocumentReference) => ref.parent.parent!.id;
 
 /**
  * Everything the dashboard shows, computed on read. Uses unfiltered
- * collection-group scans of payments, schedule and revisions (no index needed).
+ * collection-group scans of payments, schedule, revisions, time entries and tasks (no index needed).
  * The result carries both earnings views: `earningsSeries` (last 12 months) and
  * `weeklyEarningsSeries` (last 12 Monday-start weeks), each bucketed in Asia/Manila
  * by the payment's paidOn date, one series per currency.
  */
-export async function getDashboardData(): Promise<DashboardData> {
+export async function getDashboardData(opts: { convert?: boolean } = {}): Promise<DashboardData> {
   await requireAdmin();
-  const [projectsSnap, clientsSnap, prospectsSnap, paymentsSnap, scheduleSnap, revisionsSnap] = await Promise.all([
+  const [projectsSnap, clientsSnap, prospectsSnap, paymentsSnap, scheduleSnap, revisionsSnap, entriesSnap, tasksSnap] = await Promise.all([
     col.projects().get(),
     col.clients().get(),
     col.prospects().get(),
     db().collectionGroup("payments").get(),
     db().collectionGroup("schedule").get(),
     db().collectionGroup("revisions").get(),
+    db().collectionGroup("timeEntries").get(),
+    db().collectionGroup("tasks").get(),
   ]);
 
-  const projects: DashProject[] = fromDocs<Project>(projectsSnap);
+  const projects: DashProject[] = projectsFromDocs(projectsSnap);
   const clients = fromDocs<Client>(clientsSnap).map((c) => ({ id: c.id, name: c.name }));
-  const prospects: DashProspect[] = fromDocs<Prospect>(prospectsSnap);
+  const prospects: DashProspect[] = prospectsFromDocs(prospectsSnap);
   const payments: DashPayment[] = paymentsSnap.docs.map((d) => ({
     projectId: projectIdOf(d.ref),
     amount: (d.data() as Payment).amount,
@@ -52,5 +57,19 @@ export async function getDashboardData(): Promise<DashboardData> {
     return { id: d.id, projectId: projectIdOf(d.ref), round: data.round, status: data.status };
   });
 
-  return buildDashboard({ projects, clients, prospects, payments, schedule, revisions });
+  const timeEntries: DashTimeEntry[] = entriesSnap.docs.map((d) => {
+    const data = d.data() as TimeEntry;
+    return { projectId: projectIdOf(d.ref), date: data.date, quantityHundredths: data.quantityHundredths };
+  });
+  const tasks: DashTask[] = tasksSnap.docs.map((d) => {
+    const data = fromDoc<Task>(d);
+    return { id: d.id, projectId: projectIdOf(d.ref), title: data.title, price: data.price, status: data.status, order: data.order, doneAt: data.doneAt };
+  });
+
+  // Rates are only fetched for the PHP view, and only for currencies actually in use.
+  const rates = opts.convert
+    ? await loadRateTable([...new Set([...projects.map((p) => p.currency), ...prospects.map((p) => p.currency)])])
+    : undefined;
+
+  return buildDashboard({ projects, clients, prospects, payments, schedule, revisions, timeEntries, tasks, rates });
 }

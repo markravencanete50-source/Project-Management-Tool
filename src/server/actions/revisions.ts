@@ -12,7 +12,7 @@ import { isBillableRound, MAX_CLIENT_PENDING_REVISIONS, nextRevisionRound, REVIS
 import { sendChangeOrderAwaitingApproval, sendRevisionUpdate } from "@/lib/email";
 import { getAccessibleProject } from "@/server/data/access";
 import { col } from "@/server/data/refs";
-import { fromDoc, fromDocs } from "@/server/data/convert";
+import { fromDoc, fromDocs, projectFromDoc } from "@/server/data/convert";
 import { logActivity } from "@/server/activity";
 import { run, UserError } from "@/server/action";
 import {
@@ -50,6 +50,7 @@ export async function requestRevision(projectId: string, notes: string, attachme
     const session = await requireClient();
     const { project } = await getAccessibleProject(input.projectId);
     if (project.clientId !== session.clientId) throw new UserError("Not found");
+    if (project.kind !== "fixed") throw new UserError("Revisions are not part of this kind of project");
 
     const attachments = [...new Set(input.attachmentIds)];
     for (const id of attachments) {
@@ -62,7 +63,7 @@ export async function requestRevision(projectId: string, notes: string, attachme
 
     const result = await db().runTransaction(async (tx) => {
       const [projectSnap, revisionsSnap] = await Promise.all([tx.get(projectRef), tx.get(revisionsRef)]);
-      const current = fromDoc<Project>(projectSnap);
+      const current = projectFromDoc(projectSnap);
       if (current.status !== "active" && current.status !== "on_hold") {
         throw new UserError("Revisions can be requested once the project is active");
       }

@@ -1,4 +1,6 @@
-import type { LostReason, ProspectSource, ProspectStage } from "@/lib/types";
+import { formatMoney } from "@/lib/money";
+import { valueSuffix } from "@/lib/engagement";
+import type { LostReason, Prospect, ProspectSource, ProspectStage } from "@/lib/types";
 
 export const STAGE_LABELS: Record<ProspectStage, string> = {
   new: "New",
@@ -72,4 +74,9 @@ export const STAGE_DOT: Record<ProspectStage, string> = {
 /** One short line combining company and service, or an empty string. */
 export function companyLine(p: { company: string; service: string }): string {
   return [p.company, p.service].filter(Boolean).join(", ");
+}
+
+/** "£1,500.00" for a project, "£1,500.00/mo" for a retainer prospect's monthly value. */
+export function formatEstimate(p: Pick<Prospect, "estimatedValue" | "currency" | "engagementKind">): string {
+  return `${formatMoney(p.estimatedValue, p.currency)}${valueSuffix(p.engagementKind)}`;
 }

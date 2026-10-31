@@ -24,12 +24,18 @@ export default async function ProjectsPage() {
         }
       />
       <ProjectsList
-        projects={items.map(({ project, clientName, progress }) => ({
+        projects={items.map(({ project, clientName, progress, tasksDone, tasksTotal }) => ({
           id: project.id,
           title: project.title,
           clientName,
           status: project.status,
+          kind: project.kind,
           progress,
+          tasksDone,
+          tasksTotal,
+          rate: project.rate,
+          rateUnit: project.rateUnit,
+          currency: project.currency,
           deadline: project.deadline,
           archived: Boolean(project.archivedAt),
           overdue:

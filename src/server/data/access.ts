@@ -2,7 +2,7 @@ import "server-only";
 import { notFound } from "next/navigation";
 import { requireAny, type Session } from "@/lib/auth/session";
 import { col } from "@/server/data/refs";
-import { fromDoc } from "@/server/data/convert";
+import { projectFromDoc } from "@/server/data/convert";
 import type { Project } from "@/lib/types";
 
 /**
@@ -14,7 +14,7 @@ export async function getAccessibleProject(projectId: string): Promise<{ session
   const session = await requireAny();
   const snap = await col.projects().doc(projectId).get();
   if (!snap.exists) notFound();
-  const project = fromDoc<Project>(snap);
+  const project = projectFromDoc(snap);
   if (session.role === "client") {
     if (project.clientId !== session.clientId || project.archivedAt || project.status === "draft") notFound();
   }

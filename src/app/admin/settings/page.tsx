@@ -43,7 +43,7 @@ export default async function SettingsPage() {
                 <FileJson className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <p className="min-w-0 text-sm text-muted-foreground">
                   <span className="block font-medium text-foreground">Everything as JSON</span>
-                  Clients, prospects, projects with milestones, schedule, payments, agreements and revisions, activity and settings.
+                  Clients, prospects, projects with milestones, schedule, payments, agreements, revisions, time entries and tasks, activity and settings.
                 </p>
               </div>
               <Button variant="outline" className="shrink-0" render={<a href="/api/export?format=json" download />}>
@@ -62,6 +62,32 @@ export default async function SettingsPage() {
               <Button variant="outline" className="shrink-0" render={<a href="/api/export?format=csv" download />}>
                 <Download data-icon="inline-start" />
                 Download payments CSV
+              </Button>
+            </li>
+            <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <FileSpreadsheet className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <p className="min-w-0 text-sm text-muted-foreground">
+                  <span className="block font-medium text-foreground">Time log as CSV</span>
+                  Every retainer time entry with its rate and value.
+                </p>
+              </div>
+              <Button variant="outline" className="shrink-0" render={<a href="/api/export?format=time" download />}>
+                <Download data-icon="inline-start" />
+                Download time CSV
+              </Button>
+            </li>
+            <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <FileSpreadsheet className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <p className="min-w-0 text-sm text-muted-foreground">
+                  <span className="block font-medium text-foreground">Tasks as CSV</span>
+                  Every priced task with its status and price.
+                </p>
+              </div>
+              <Button variant="outline" className="shrink-0" render={<a href="/api/export?format=tasks" download />}>
+                <Download data-icon="inline-start" />
+                Download tasks CSV
               </Button>
             </li>
           </ul>

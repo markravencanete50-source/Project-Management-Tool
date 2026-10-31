@@ -5,6 +5,9 @@ import { AnimatedBar } from "@/components/motion/animated-bar";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { ProjectStatusBadge } from "@/components/projects-core/project-status-badge";
 import { formatIsoDate } from "@/lib/dates";
+import { KindBadge } from "@/components/common/kind-badge";
+import { UNIT_LABELS } from "@/lib/billing";
+import { formatMoney } from "@/lib/money";
 import { listPortalProjects } from "@/server/data/projects";
 
 export const metadata = { title: "Your projects" };
@@ -31,7 +34,7 @@ export default async function PortalHomePage() {
         </Empty>
       ) : (
         <ul className="stagger grid gap-4 sm:grid-cols-2">
-          {items.map(({ project, progress }) => (
+          {items.map(({ project, progress, tasksDone, tasksTotal }) => (
             <li key={project.id} className="min-w-0">
               <div className="card-interactive relative flex h-full flex-col gap-5 rounded-xl border bg-card p-5 shadow-xs">
                 <div className="flex items-start justify-between gap-3">
@@ -43,13 +46,29 @@ export default async function PortalHomePage() {
                   </Link>
                   <ProjectStatusBadge status={project.status} />
                 </div>
-                <div className="mt-auto flex flex-col gap-2">
-                  <div className="flex items-baseline justify-between text-sm">
-                    <span className="text-muted-foreground">Progress</span>
-                    <span className="font-semibold tabular-nums">{Math.round(progress)}%</span>
+                {project.kind === "fixed" ? null : (
+                  <div>
+                    <KindBadge kind={project.kind} />
                   </div>
-                  <AnimatedBar value={progress} label={`Progress for ${project.title}`} />
-                </div>
+                )}
+                {project.kind === "retainer" ? (
+                  <p className="mt-auto text-sm text-muted-foreground">
+                    Billed monthly at{" "}
+                    <span className="font-semibold text-foreground tabular-nums">
+                      {formatMoney(project.rate, project.currency)} per {UNIT_LABELS[project.rateUnit ?? "hour"].singular}
+                    </span>
+                  </p>
+                ) : (
+                  <div className="mt-auto flex flex-col gap-2">
+                    <div className="flex items-baseline justify-between text-sm">
+                      <span className="text-muted-foreground">{project.kind === "tasks" ? "Tasks done" : "Progress"}</span>
+                      <span className="font-semibold tabular-nums">
+                        {project.kind === "tasks" ? `${tasksDone} of ${tasksTotal}` : `${Math.round(progress)}%`}
+                      </span>
+                    </div>
+                    <AnimatedBar value={progress} label={`Progress for ${project.title}`} />
+                  </div>
+                )}
                 {project.deadline ? (
                   <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
                     <CalendarDays className="size-4" aria-hidden />

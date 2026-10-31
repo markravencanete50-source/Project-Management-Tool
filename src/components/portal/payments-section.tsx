@@ -9,6 +9,8 @@ import { getPortalProjectPayments } from "@/server/data/payments";
 export async function PortalPaymentsSection({ projectId }: { projectId: string }) {
   const { project, payments, finance } = await getPortalProjectPayments(projectId);
   const { currency } = project;
+  const derived = project.kind !== "fixed";
+  const retainer = project.kind === "retainer";
 
   return (
     <section className="grid grid-cols-1 gap-6" aria-labelledby="portal-payments-heading">
@@ -18,14 +20,28 @@ export async function PortalPaymentsSection({ projectId }: { projectId: string }
         </h2>
         <p className="mt-1 text-base text-muted-foreground">What has been paid so far and what is coming up.</p>
       </div>
-      <PaymentSummary contractValue={project.contractValue} finance={finance} currency={currency} showOverdue={false} />
+      <PaymentSummary
+        contractValue={derived ? finance.scheduleTotal : project.contractValue}
+        finance={finance}
+        currency={currency}
+        showOverdue={false}
+        totalLabel={derived ? "Billed so far" : "Contract value"}
+        basisLabel={derived ? "billed" : "contract value"}
+      />
 
       <div className="grid grid-cols-1 gap-3">
-        <h3 className="text-base font-semibold">Payment schedule</h3>
+        <h3 className="text-base font-semibold">{retainer ? "Monthly summary" : derived ? "Completed tasks" : "Payment schedule"}</h3>
         {finance.lines.length === 0 ? (
-          <p className="text-base text-muted-foreground">No payment schedule has been set for this project.</p>
+          <p className="text-base text-muted-foreground">
+            {retainer ? "Nothing has been billed yet." : derived ? "No tasks have been completed yet." : "No payment schedule has been set for this project."}
+          </p>
         ) : (
-          <ScheduleTable lines={finance.lines} currency={currency} />
+          <ScheduleTable
+            lines={finance.lines}
+            currency={currency}
+            itemLabel={retainer ? "Month" : derived ? "Task" : "Payment"}
+            dueLabel={retainer ? "Due" : derived ? "Done on" : "Due"}
+          />
         )}
       </div>
 

@@ -3,7 +3,7 @@ import { NewProspectDialog } from "@/components/prospects/new-prospect-dialog";
 import { ProspectsView } from "@/components/prospects/prospects-view";
 import { listProspects } from "@/server/data/prospects";
 import { todayIso } from "@/lib/dates";
-import { PROSPECT_SOURCES, PROSPECT_STAGES } from "@/lib/types";
+import { PROJECT_KINDS, PROSPECT_SOURCES, PROSPECT_STAGES } from "@/lib/types";
 
 export const metadata = { title: "Prospects" };
 
@@ -18,6 +18,8 @@ export default async function ProspectsPage({ searchParams }: PageProps<"/admin/
   const sourceParam = one(sp.source);
   const stage = (PROSPECT_STAGES as readonly string[]).includes(stageParam) ? stageParam : "all";
   const source = (PROSPECT_SOURCES as readonly string[]).includes(sourceParam) ? sourceParam : "all";
+  const kindParam = one(sp.kind);
+  const kind = (PROJECT_KINDS as readonly string[]).includes(kindParam) ? kindParam : "all";
   const showArchived = one(sp.archived) === "1";
 
   const all = await listProspects();
@@ -25,7 +27,8 @@ export default async function ProspectsPage({ searchParams }: PageProps<"/admin/
     (p) =>
       (showArchived || !p.archivedAt) &&
       (stage === "all" || p.stage === stage) &&
-      (source === "all" || p.source === source),
+      (source === "all" || p.source === source) &&
+      (kind === "all" || p.engagementKind === kind),
   );
 
   return (
@@ -40,6 +43,7 @@ export default async function ProspectsPage({ searchParams }: PageProps<"/admin/
         view={view}
         stage={stage}
         source={source}
+        kind={kind}
         showArchived={showArchived}
         today={todayIso()}
         hasAny={all.some((p) => showArchived || !p.archivedAt)}

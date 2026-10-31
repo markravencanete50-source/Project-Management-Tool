@@ -1,4 +1,4 @@
-import type { Milestone, Revision, RevisionStatus } from "@/lib/types";
+import type { Milestone, Revision, RevisionStatus, Task } from "@/lib/types";
 
 /** Progress percentage from done milestone weights. */
 export function progress(milestones: Pick<Milestone, "weight" | "done">[]): number {
@@ -6,6 +6,12 @@ export function progress(milestones: Pick<Milestone, "weight" | "done">[]): numb
   if (total <= 0) return 0;
   const done = milestones.filter((m) => m.done).reduce((sum, m) => sum + m.weight, 0);
   return Math.round((done / total) * 100);
+}
+
+/** Task projects: percentage of tasks marked done. There are no weights, so every task counts the same. */
+export function taskProgress(tasks: Pick<Task, "status">[]): number {
+  if (tasks.length === 0) return 0;
+  return Math.round((tasks.filter((t) => t.status === "done").length / tasks.length) * 100);
 }
 
 /** Weights must be positive integers summing to exactly 100 (or there are no milestones). */

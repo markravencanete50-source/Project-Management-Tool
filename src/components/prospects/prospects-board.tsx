@@ -30,6 +30,8 @@ import {
 } from "@/components/prospects/labels";
 import { formatIsoDate } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
+import { KindBadge } from "@/components/common/kind-badge";
+import { formatEstimate } from "@/components/prospects/labels";
 import { PROSPECT_STAGES, type LostReason, type Prospect, type ProspectStage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -68,9 +70,12 @@ function CardBody({ p, today, interactive }: { p: Prospect; today: string; inter
       {line ? <div className="mt-0.5 truncate text-xs text-muted-foreground">{line}</div> : null}
       <div className="mt-2.5 flex items-center justify-between gap-2">
         <span className={cn("text-sm font-semibold tabular-nums", !p.estimatedValue && "font-normal text-muted-foreground")}>
-          {p.estimatedValue ? formatMoney(p.estimatedValue, p.currency) : "No value"}
+          {p.estimatedValue ? formatEstimate(p) : "No value"}
         </span>
         <span className="truncate rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{SOURCE_LABELS[p.source]}</span>
+      </div>
+      <div className="mt-2">
+        <KindBadge kind={p.engagementKind} />
       </div>
       {p.nextFollowUp ? (
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -124,10 +129,12 @@ function stageTotal(prospects: Prospect[]): string | null {
   if (valued.length === 0) return null;
   const currency = valued[0].currency;
   if (valued.some((p) => p.currency !== currency)) return null;
-  return formatMoney(
+  const total = formatMoney(
     valued.reduce((sum, p) => sum + p.estimatedValue, 0),
     currency,
   );
+  // A monthly retainer value is not a project value: say so when they are mixed in.
+  return valued.some((p) => p.engagementKind === "retainer") ? `${total} incl. /mo` : total;
 }
 
 function Column({

@@ -5,6 +5,7 @@ import { DetailGrid, DetailItem } from "@/components/common/detail";
 import { SectionHeader } from "@/components/common/section-header";
 import { AnimatedBar } from "@/components/motion/animated-bar";
 import { Badge } from "@/components/ui/badge";
+import { KindBadge } from "@/components/common/kind-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -112,7 +113,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
             </Empty>
           ) : (
             <ul className="stagger grid gap-3 sm:grid-cols-2">
-              {projects.map(({ project, progress }) => (
+              {projects.map(({ project, progress, tasksDone, tasksTotal }) => (
                 <li
                   key={project.id}
                   className="card-interactive relative flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs"
@@ -126,15 +127,26 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
                     </Link>
                     <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                       {project.archivedAt ? <Badge variant="outline">Archived</Badge> : null}
+                      <KindBadge kind={project.kind} />
                       <ProjectStatusBadge status={project.status} />
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <AnimatedBar value={progress} label="Project progress" className="h-1.5 flex-1" />
-                    <span className="text-xs text-muted-foreground tabular-nums">{progress}%</span>
-                  </div>
+                  {project.kind === "retainer" ? null : (
+                    <div className="flex items-center gap-3">
+                      <AnimatedBar value={progress} label="Project progress" className="h-1.5 flex-1" />
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {project.kind === "tasks" ? `${tasksDone} of ${tasksTotal}` : `${progress}%`}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
-                    <span className="font-medium tabular-nums">{formatMoney(project.contractValue, project.currency)}</span>
+                    <span className="font-medium tabular-nums">
+                      {project.kind === "retainer"
+                        ? `${formatMoney(project.rate, project.currency)} / ${project.rateUnit ?? "hour"}`
+                        : project.kind === "tasks"
+                          ? "Per task"
+                          : formatMoney(project.contractValue, project.currency)}
+                    </span>
                     <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                       <CalendarClock className="size-3.5" aria-hidden="true" />
                       {project.deadline ? `Due ${formatIsoDate(project.deadline)}` : "No deadline"}

@@ -1,7 +1,7 @@
 import { CircleCheck, Clock, TriangleAlert, Wallet } from "lucide-react";
 import type { ReactNode } from "react";
 import { AnimatedBar } from "@/components/motion/animated-bar";
-import type { ProjectFinance } from "@/lib/finance";
+import type { BillLine, ProjectFinance } from "@/lib/finance";
 import { formatMoney, type Currency } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
@@ -43,11 +43,16 @@ export function PaymentSummary({
   finance,
   currency,
   showOverdue = true,
+  totalLabel = "Contract value",
+  basisLabel = "contract value",
 }: {
+  /** The contract value, or for retainers and task projects the total billed so far. */
   contractValue: number;
-  finance: ProjectFinance;
+  finance: ProjectFinance<BillLine>;
   currency: Currency;
   showOverdue?: boolean;
+  totalLabel?: string;
+  basisLabel?: string;
 }) {
   const pending =
     finance.pending < 0
@@ -58,8 +63,8 @@ export function PaymentSummary({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className={cn("stagger grid grid-cols-2 gap-3 [--stagger:40ms]", showOverdue ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
-        <Stat label="Contract value" value={formatMoney(contractValue, currency)} icon={<Wallet />} />
+      <div aria-live="polite" className={cn("stagger grid grid-cols-2 gap-3 [--stagger:40ms]", showOverdue ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
+        <Stat label={totalLabel} value={formatMoney(contractValue, currency)} icon={<Wallet />} />
         <Stat label="Paid" value={formatMoney(finance.paid, currency)} tone="success" icon={<CircleCheck />} />
         <Stat label={finance.pending < 0 ? "Balance" : "Pending"} value={pending} icon={<Clock />} />
         {showOverdue ? (
@@ -75,9 +80,9 @@ export function PaymentSummary({
         <div className="flex flex-col gap-1.5 rounded-xl border bg-card px-4 py-3 shadow-xs">
           <div className="flex items-baseline justify-between gap-3 text-xs">
             <span className="font-medium text-muted-foreground">Paid so far</span>
-            <span className="font-medium tabular-nums">{paidPct}% of contract value</span>
+            <span className="font-medium tabular-nums">{paidPct}% of {basisLabel}</span>
           </div>
-          <AnimatedBar value={paidPct} label="Paid of contract value" barClassName="bg-success" />
+          <AnimatedBar value={paidPct} label={`Paid of ${basisLabel}`} barClassName="bg-success" />
         </div>
       ) : null}
     </div>

@@ -2,21 +2,21 @@ import "server-only";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/session";
 import { col } from "@/server/data/refs";
-import { fromDoc, fromDocs } from "@/server/data/convert";
+import { fromDocs, prospectFromDoc, prospectsFromDocs } from "@/server/data/convert";
 import type { Activity, Prospect } from "@/lib/types";
 
 /** All prospects, newest first. Archived ones are included; callers filter. */
 export async function listProspects(): Promise<Prospect[]> {
   await requireAdmin();
   const snap = await col.prospects().get();
-  return fromDocs<Prospect>(snap).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  return prospectsFromDocs(snap).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
 export async function getProspect(id: string): Promise<Prospect> {
   await requireAdmin();
   const snap = await col.prospects().doc(id).get();
   if (!snap.exists) notFound();
-  return fromDoc<Prospect>(snap);
+  return prospectFromDoc(snap);
 }
 
 /** Activity for one prospect, newest first (sorted in memory). */

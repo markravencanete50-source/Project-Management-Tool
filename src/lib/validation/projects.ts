@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { CURRENCIES, toMinor } from "@/lib/money";
 import { isoDateSchema } from "@/lib/dates";
-import { MANUAL_PROJECT_STATUSES } from "@/lib/types";
+import { MANUAL_PROJECT_STATUSES, RATE_UNITS } from "@/lib/types";
 
 /** Optional date-only field: empty string means "not set". */
 const optionalDate = z
@@ -35,25 +35,75 @@ function datesInOrder(v: { startDate: string | null; deadline: string | null }) 
 }
 const datesMessage = { message: "Deadline cannot be before the start date", path: ["deadline"] };
 
-export const projectCreateSchema = z
+const createCommon = {
+  clientId: z.string().min(1, "Choose a client"),
+  title: z.string().trim().min(1, "Title is required").max(160),
+  description: z.string().trim().max(5000),
+  currency: z.enum(CURRENCIES),
+  startDate: optionalDate,
+  deadline: optionalDate,
+};
+
+/** A rate per hour or day. Must be above zero. */
+const rateString = moneyString.refine((n) => n > 0, "Rate must be greater than zero");
+
+const fixedCreate = z
   .object({
-    clientId: z.string().min(1, "Choose a client"),
+    ...createCommon,
+    kind: z.literal("fixed"),
+    contractValue: moneyString,
+    revisionAllowance: wholeNumber("Revision allowance", 50),
+  })
+  .refine(datesInOrder, datesMessage);
+
+const retainerCreate = z
+  .object({
+    ...createCommon,
+    kind: z.literal("retainer"),
+    rateUnit: z.enum(RATE_UNITS),
+    rate: rateString,
+  })
+  .refine(datesInOrder, datesMessage);
+
+const tasksCreate = z.object({ ...createCommon, kind: z.literal("tasks") }).refine(datesInOrder, datesMessage);
+
+/** Input without a kind is a fixed project, so older callers keep working. */
+function defaultKind(value: unknown): unknown {
+  return value && typeof value === "object" && !("kind" in value) ? { kind: "fixed", ...value } : value;
+}
+
+export const projectCreateSchema = z.preprocess(
+  defaultKind,
+  z.discriminatedUnion("kind", [fixedCreate, retainerCreate, tasksCreate]),
+);
+
+/** Edit never touches contractValue, status, client or currency. This is the fixed project shape. */
+export const projectUpdateSchema = z
+  .object({
     title: z.string().trim().min(1, "Title is required").max(160),
     description: z.string().trim().max(5000),
-    currency: z.enum(CURRENCIES),
-    contractValue: moneyString,
     revisionAllowance: wholeNumber("Revision allowance", 50),
     startDate: optionalDate,
     deadline: optionalDate,
   })
   .refine(datesInOrder, datesMessage);
 
-/** Edit never touches contractValue, status, client or currency. */
-export const projectUpdateSchema = z
+/** Retainers can also change the rate. Task projects have no revision allowance. */
+export const retainerUpdateSchema = z
   .object({
     title: z.string().trim().min(1, "Title is required").max(160),
     description: z.string().trim().max(5000),
-    revisionAllowance: wholeNumber("Revision allowance", 50),
+    rateUnit: z.enum(RATE_UNITS),
+    rate: rateString,
+    startDate: optionalDate,
+    deadline: optionalDate,
+  })
+  .refine(datesInOrder, datesMessage);
+
+export const tasksUpdateSchema = z
+  .object({
+    title: z.string().trim().min(1, "Title is required").max(160),
+    description: z.string().trim().max(5000),
     startDate: optionalDate,
     deadline: optionalDate,
   })
@@ -71,6 +121,9 @@ export const milestonesSchema = z
   )
   .max(50, "Too many milestones");
 
-export type ProjectCreateInput = z.input<typeof projectCreateSchema>;
+export type ProjectCreateInput = z.input<typeof fixedCreate> | z.input<typeof retainerCreate> | z.input<typeof tasksCreate>;
+export type ProjectCreateOutput = z.output<typeof fixedCreate> | z.output<typeof retainerCreate> | z.output<typeof tasksCreate>;
 export type ProjectUpdateInput = z.input<typeof projectUpdateSchema>;
+export type RetainerUpdateInput = z.input<typeof retainerUpdateSchema>;
+export type TasksUpdateInput = z.input<typeof tasksUpdateSchema>;
 export type MilestoneInput = z.input<typeof milestonesSchema>[number];

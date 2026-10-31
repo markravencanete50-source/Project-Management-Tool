@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/auth/session";
 import { db } from "@/lib/firebase/admin";
 import { logActivity } from "@/server/activity";
 import { getAccessibleProject } from "@/server/data/access";
-import { fromDoc, fromDocs } from "@/server/data/convert";
+import { fromDoc, fromDocs, projectFromDoc } from "@/server/data/convert";
 import { col } from "@/server/data/refs";
 import type { Agreement, Project } from "@/lib/types";
 
@@ -24,7 +24,7 @@ export async function listAgreements(projectId: string): Promise<{ project: Proj
   const projectSnap = await col.projects().doc(projectId).get();
   if (!projectSnap.exists) notFound();
   const agreements = fromDocs<Agreement>(await col.agreements(projectId).get()).sort((a, b) => b.version - a.version);
-  return { project: fromDoc<Project>(projectSnap), agreements };
+  return { project: projectFromDoc(projectSnap), agreements };
 }
 
 /**

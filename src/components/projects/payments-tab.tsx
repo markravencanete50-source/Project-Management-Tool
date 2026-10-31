@@ -1,4 +1,4 @@
-import { CalendarClock, TriangleAlert, Wallet } from "lucide-react";
+import { CalendarClock, ListChecks, TriangleAlert, Wallet } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { SectionHeader } from "@/components/common/section-header";
@@ -16,6 +16,78 @@ export async function PaymentsTab({ projectId }: { projectId: string }) {
   await requireAdmin();
   const { project, schedule, payments, finance } = await getAdminProjectPayments(projectId);
   const { currency } = project;
+  const derived = project.kind !== "fixed";
+
+  const paymentsSection = (
+    <section className="grid grid-cols-1 gap-3">
+      <SectionHeader
+        title="Payments received"
+        description={
+          derived
+            ? "Money that has arrived. Each payment settles the oldest unpaid bill first."
+            : "Money that has arrived. Each payment settles the earliest unpaid line."
+        }
+        actions={<PaymentFormDialog projectId={project.id} currency={currency} />}
+      />
+      {payments.length === 0 ? (
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Wallet />
+            </EmptyMedia>
+            <EmptyTitle>No payments yet</EmptyTitle>
+            <EmptyDescription>Add a payment when money arrives. This app does not collect payments.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <PaymentsList payments={payments} currency={currency} projectId={project.id} editable />
+      )}
+    </section>
+  );
+
+  if (derived) {
+    const retainer = project.kind === "retainer";
+    return (
+      <div className="grid grid-cols-1 gap-8">
+        <PaymentSummary
+          contractValue={finance.scheduleTotal}
+          finance={finance}
+          currency={currency}
+          totalLabel="Billed so far"
+          basisLabel="billed"
+        />
+        <section className="grid grid-cols-1 gap-3">
+          <SectionHeader
+            title={retainer ? "Monthly bills" : "Owed tasks"}
+            description={
+              retainer
+                ? "Each month with logged time is billed in arrears and falls due on its last day. The current month is in progress."
+                : "A task is owed the moment it is marked done. Tasks still to do are not billed."
+            }
+          />
+          {finance.lines.length === 0 ? (
+            <Empty className="border">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">{retainer ? <CalendarClock /> : <ListChecks />}</EmptyMedia>
+                <EmptyTitle>{retainer ? "Nothing billed yet" : "No tasks owed yet"}</EmptyTitle>
+                <EmptyDescription>
+                  {retainer ? "Log time in the Time log tab and each month will appear here." : "Mark a task done in the Tasks tab and it will appear here."}
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <ScheduleTable
+              lines={finance.lines}
+              currency={currency}
+              itemLabel={retainer ? "Month" : "Task"}
+              dueLabel={retainer ? "Due" : "Done on"}
+            />
+          )}
+        </section>
+        {paymentsSection}
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 gap-8">
@@ -66,26 +138,7 @@ export async function PaymentsTab({ projectId }: { projectId: string }) {
         )}
       </section>
 
-      <section className="grid grid-cols-1 gap-3">
-        <SectionHeader
-          title="Payments received"
-          description="Money that has arrived. Each payment settles the earliest unpaid line."
-          actions={<PaymentFormDialog projectId={project.id} currency={currency} />}
-        />
-        {payments.length === 0 ? (
-          <Empty className="border">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <Wallet />
-              </EmptyMedia>
-              <EmptyTitle>No payments yet</EmptyTitle>
-              <EmptyDescription>Add a payment when money arrives. This app does not collect payments.</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : (
-          <PaymentsList payments={payments} currency={currency} projectId={project.id} editable />
-        )}
-      </section>
+      {paymentsSection}
     </div>
   );
 }

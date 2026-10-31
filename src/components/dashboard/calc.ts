@@ -1,11 +1,13 @@
 // Pure dashboard aggregation. No server imports, so it can be unit tested and
 // reused anywhere. Everything is computed on read from source documents.
 import { formatInTimeZone } from "date-fns-tz";
-import { addDaysIso, formatMonthKey, lastNMonths, monthKeyOfInstant, todayIso, type IsoDate, type MonthKey } from "@/lib/dates";
-import { earningsByMonth, projectFinance } from "@/lib/finance";
+import { addDaysIso, formatMonthKey, lastNMonths, monthKeyOf, monthKeyOfInstant, todayIso, type IsoDate, type MonthKey } from "@/lib/dates";
+import { derivedBillLines, financeFor } from "@/lib/billing";
+import { earningsByMonth } from "@/lib/finance";
+import { convertMoney, DISPLAY_CURRENCY, type RateTable } from "@/lib/fx/convert";
 import { addMoney, CURRENCIES, type Currency, type MoneyByCurrency } from "@/lib/money";
 import { REVISION_WAITING_ON_ADMIN } from "@/lib/projects";
-import type { Project, ProjectStatus, Prospect, RevisionStatus, ScheduleLine } from "@/lib/types";
+import type { Project, ProjectStatus, Prospect, RevisionStatus, ScheduleLine, Task, TimeEntry } from "@/lib/types";
 
 export const WIN_RATE_DAYS = 90;
 export const CHART_MONTHS = 12;
@@ -14,13 +16,19 @@ export const CHART_WEEKS = 12;
 export type DashProject = Pick<
   Project,
   "id" | "clientId" | "title" | "status" | "currency" | "contractValue" | "acceptedAt" | "archivedAt"
->;
+> &
+  // Absent on documents written before engagement kinds: those are fixed projects.
+  Partial<Pick<Project, "kind" | "rate" | "rateUnit">>;
 export type DashProspect = Pick<
   Prospect,
   "id" | "name" | "company" | "stage" | "estimatedValue" | "currency" | "nextFollowUp" | "closedAt" | "archivedAt"
->;
+> &
+  // Absent on prospects written before engagement kinds: those are fixed.
+  Partial<Pick<Prospect, "engagementKind">>;
 export type DashPayment = { projectId: string; amount: number; paidOn: IsoDate };
 export type DashScheduleLine = ScheduleLine & { projectId: string };
+export type DashTimeEntry = Pick<TimeEntry, "date" | "quantityHundredths"> & { projectId: string };
+export type DashTask = Pick<Task, "id" | "title" | "price" | "status" | "order" | "doneAt"> & { projectId: string };
 export type DashRevision = { id: string; projectId: string; round: number; status: RevisionStatus };
 
 export type DashboardInput = {
@@ -31,6 +39,13 @@ export type DashboardInput = {
   payments: DashPayment[];
   schedule: DashScheduleLine[];
   revisions: DashRevision[];
+  /** Retainer time entries and task documents. Optional so fixed-only callers need not pass them. */
+  timeEntries?: DashTimeEntry[];
+  tasks?: DashTask[];
+  /** Exchange rates to PHP. When given, the result also carries a converted PHP view. */
+  rates?: RateTable | null;
+  /** The caller tried to get rates and could not: the page shows the notice and original currencies. */
+  ratesUnavailable?: boolean;
   now?: Date;
 };
 
@@ -85,6 +100,24 @@ export type RevisionItem = {
   status: RevisionStatus;
 };
 
+/**
+ * Everything the PHP view shows. Every figure is converted at the CURRENT rate,
+ * including old payments (a display conversion, not the rate on the payment
+ * day). Conversion happens per bucket (one currency in one period) and the
+ * rounded buckets are summed, so a chart's bars add up to its totals.
+ */
+export type ConvertedDashboard = {
+  rates: RateTable;
+  earnedThisMonth: number;
+  earnedThisYear: number;
+  pendingBalance: number;
+  pipelineValue: number;
+  recurringBilledThisMonth: number;
+  /** Zero or one series, in PHP. */
+  earningsSeries: EarningsSeries[];
+  weeklyEarningsSeries: WeeklyEarningsSeries[];
+};
+
 export type DashboardData = {
   today: IsoDate;
   earnedThisMonth: MoneyByCurrency;
@@ -93,7 +126,17 @@ export type DashboardData = {
   acceptedAllTime: number;
   activeProjects: number;
   pendingBalance: MoneyByCurrency;
+  /** Retainer bill lines due in the current Manila month (in progress included), per currency. */
+  recurringBilledThisMonth: MoneyByCurrency;
+  /** Live retainers that are active, for the card hint. */
+  activeRetainers: number;
   pipelineValue: MoneyByCurrency;
+  /** True when at least one open prospect is a retainer, whose value is monthly. */
+  pipelineIncludesRetainers: boolean;
+  /** The PHP view, or null when no rates were given. */
+  converted: ConvertedDashboard | null;
+  /** Rates were wanted but could not be fetched. */
+  fxUnavailable: boolean;
   winRate: { won: number; lost: number; rate: number | null };
   /** Last 12 months per currency, oldest first. */
   earningsSeries: EarningsSeries[];
@@ -211,6 +254,30 @@ function runningTotals(amounts: number[]): number[] {
   return amounts.map((a) => (sum += a));
 }
 
+function monthlyPoints(months: MonthKey[], amounts: number[]): EarningsPoint[] {
+  const cumulative = runningTotals(amounts);
+  return months.map((month, i) => ({
+    month,
+    label: monthLabel(month),
+    axisLabel: monthAxisLabel(month, i),
+    longLabel: formatMonthKey(month, "MMMM yyyy"),
+    amount: amounts[i],
+    cumulative: cumulative[i],
+  }));
+}
+
+function weeklyPoints(weeks: WeekKey[], amounts: number[]): WeeklyEarningsPoint[] {
+  const cumulative = runningTotals(amounts);
+  return weeks.map((week, i) => ({
+    week,
+    label: weekAxisLabel(week),
+    axisLabel: weekAxisLabel(week),
+    longLabel: weekLongLabel(week),
+    amount: amounts[i],
+    cumulative: cumulative[i],
+  }));
+}
+
 /**
  * Earnings per month for a window, one series per currency that has any payment in it.
  * `include` forces currencies in (zero filled) so two views of the same data show the same cards.
@@ -225,15 +292,7 @@ export function earningsSeries(
   for (const currency of CURRENCIES) {
     const amounts = months.map((month) => byMonth.get(month)?.[currency] ?? 0);
     if (!amounts.some((a) => a !== 0) && !include.includes(currency)) continue;
-    const cumulative = runningTotals(amounts);
-    const points = months.map((month, i) => ({
-      month,
-      label: monthLabel(month),
-      axisLabel: monthAxisLabel(month, i),
-      longLabel: formatMonthKey(month, "MMMM yyyy"),
-      amount: amounts[i],
-      cumulative: cumulative[i],
-    }));
+    const points = monthlyPoints(months, amounts);
     out.push({ currency, points, summary: summarizePeriods(points) });
   }
   return out;
@@ -250,18 +309,40 @@ export function weeklyEarningsSeries(
   for (const currency of CURRENCIES) {
     const amounts = weeks.map((week) => byWeek.get(week)?.[currency] ?? 0);
     if (!amounts.some((a) => a !== 0) && !include.includes(currency)) continue;
-    const cumulative = runningTotals(amounts);
-    const points = weeks.map((week, i) => ({
-      week,
-      label: weekAxisLabel(week),
-      axisLabel: weekAxisLabel(week),
-      longLabel: weekLongLabel(week),
-      amount: amounts[i],
-      cumulative: cumulative[i],
-    }));
+    const points = weeklyPoints(weeks, amounts);
     out.push({ currency, points, summary: summarizePeriods(points) });
   }
   return out;
+}
+
+/**
+ * The same monthly earnings as one PHP series. Each month's per-currency
+ * bucket is converted and rounded on its own, then the buckets are summed.
+ * No series is returned when every month is zero.
+ */
+export function convertedEarningsSeries(
+  payments: { amount: number; paidOn: IsoDate; currency: Currency }[],
+  months: MonthKey[],
+  rates: RateTable,
+): EarningsSeries[] {
+  const byMonth = earningsByMonth(payments);
+  const amounts = months.map((month) => convertMoney(byMonth.get(month) ?? {}, rates));
+  if (!amounts.some((a) => a !== 0)) return [];
+  const points = monthlyPoints(months, amounts);
+  return [{ currency: DISPLAY_CURRENCY, points, summary: summarizePeriods(points) }];
+}
+
+/** Weekly twin of convertedEarningsSeries. */
+export function convertedWeeklyEarningsSeries(
+  payments: { amount: number; paidOn: IsoDate; currency: Currency }[],
+  weeks: WeekKey[],
+  rates: RateTable,
+): WeeklyEarningsSeries[] {
+  const byWeek = earningsByWeek(payments);
+  const amounts = weeks.map((week) => convertMoney(byWeek.get(week) ?? {}, rates));
+  if (!amounts.some((a) => a !== 0)) return [];
+  const points = weeklyPoints(weeks, amounts);
+  return [{ currency: DISPLAY_CURRENCY, points, summary: summarizePeriods(points) }];
 }
 
 export function acceptedSeries(acceptedAts: Date[], months: MonthKey[]): AcceptedPoint[] {
@@ -329,17 +410,35 @@ export function buildDashboard(input: DashboardInput): DashboardData {
   const paymentsBy = groupBy(input.payments, (p) => p.projectId);
   const scheduleBy = groupBy(input.schedule, (l) => l.projectId);
 
+  const entriesBy = groupBy(input.timeEntries ?? [], (e) => e.projectId);
+  const tasksBy = groupBy(input.tasks ?? [], (t) => t.projectId);
+
   const pendingBalance: MoneyByCurrency = {};
+  const recurringBilledThisMonth: MoneyByCurrency = {};
   const overdue: OverdueItem[] = [];
   for (const project of live) {
-    const finance = projectFinance({
-      contractValue: project.contractValue,
+    const kind = project.kind ?? "fixed";
+    const finance = financeFor({
+      project: { kind, contractValue: project.contractValue, rate: project.rate ?? 0, rateUnit: project.rateUnit ?? null },
       schedule: scheduleBy.get(project.id) ?? [],
+      entries: entriesBy.get(project.id) ?? [],
+      tasks: tasksBy.get(project.id) ?? [],
       payments: paymentsBy.get(project.id) ?? [],
       today,
     });
-    if (BALANCE_STATUSES.includes(project.status) && finance.pending > 0) {
+    // Fixed projects keep their original rule. Billed work on a retainer or task
+    // project is owed even once the engagement has ended, so completed counts too.
+    const balanceStatuses = kind === "fixed" ? BALANCE_STATUSES : [...BALANCE_STATUSES, "completed" as const];
+    if (balanceStatuses.includes(project.status) && finance.pending > 0) {
       addMoney(pendingBalance, project.currency, finance.pending);
+    }
+    if (kind === "retainer" && project.status !== "cancelled") {
+      const lines = derivedBillLines(
+        { kind, rate: project.rate ?? 0, rateUnit: project.rateUnit ?? null },
+        { entries: entriesBy.get(project.id) ?? [], tasks: [] },
+        today,
+      );
+      for (const l of lines) if (monthKeyOf(l.dueDate) === thisMonth) addMoney(recurringBilledThisMonth, project.currency, l.amountDue);
     }
     if (CHASE_STATUSES.includes(project.status)) {
       for (const line of finance.overdueLines) {
@@ -359,8 +458,11 @@ export function buildDashboard(input: DashboardInput): DashboardData {
   overdue.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
   const openProspects = input.prospects.filter((p) => !p.archivedAt && p.stage !== "won" && p.stage !== "lost");
+  // A retainer prospect's estimatedValue is a monthly amount. It is summed like any other
+  // value (unweighted), and the card says so when one is in the pipeline.
   const pipelineValue: MoneyByCurrency = {};
   for (const p of openProspects) addMoney(pipelineValue, p.currency, p.estimatedValue);
+  const pipelineIncludesRetainers = openProspects.some((p) => p.engagementKind === "retainer" && p.estimatedValue > 0);
 
   const followUps: FollowUpItem[] = openProspects
     .flatMap((p) => (p.nextFollowUp && p.nextFollowUp <= today ? [{ prospectId: p.id, name: p.name, company: p.company, nextFollowUp: p.nextFollowUp }] : []))
@@ -387,6 +489,24 @@ export function buildDashboard(input: DashboardInput): DashboardData {
   const weekly = weeklyEarningsSeries(taggedPayments, weeks, monthly.map((s) => s.currency));
   const accepted = acceptedSeries(acceptedAts, months);
 
+  let converted: ConvertedDashboard | null = null;
+  if (input.rates) {
+    const rates = input.rates;
+    // The year is the sum of its converted monthly buckets, so it equals the chart's running total.
+    let earnedYear = 0;
+    for (const [month, money] of byMonth) if (month.startsWith(thisYear)) earnedYear += convertMoney(money, rates);
+    converted = {
+      rates,
+      earnedThisMonth: convertMoney(earnedThisMonth, rates),
+      earnedThisYear: earnedYear,
+      pendingBalance: convertMoney(pendingBalance, rates),
+      pipelineValue: convertMoney(pipelineValue, rates),
+      recurringBilledThisMonth: convertMoney(recurringBilledThisMonth, rates),
+      earningsSeries: convertedEarningsSeries(taggedPayments, months, rates),
+      weeklyEarningsSeries: convertedWeeklyEarningsSeries(taggedPayments, weeks, rates),
+    };
+  }
+
   return {
     today,
     earnedThisMonth,
@@ -395,7 +515,12 @@ export function buildDashboard(input: DashboardInput): DashboardData {
     acceptedAllTime: acceptedAts.length,
     activeProjects: live.filter((p) => p.status === "active").length,
     pendingBalance,
+    recurringBilledThisMonth,
+    activeRetainers: live.filter((p) => p.kind === "retainer" && p.status === "active").length,
     pipelineValue,
+    pipelineIncludesRetainers,
+    converted,
+    fxUnavailable: input.ratesUnavailable ?? (input.rates === null),
     winRate: winRate(input.prospects, now),
     earningsSeries: monthly,
     weeklyEarningsSeries: weekly,

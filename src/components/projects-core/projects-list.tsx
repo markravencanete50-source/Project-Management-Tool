@@ -15,14 +15,26 @@ import { ProjectStatusBadge, STATUS_LABELS } from "@/components/projects-core/pr
 import { SimpleSelect } from "@/components/projects-core/simple-select";
 import { cn } from "@/lib/utils";
 import { formatIsoDate } from "@/lib/dates";
-import { PROJECT_STATUSES, type ProjectStatus } from "@/lib/types";
+import { KindBadge, KIND_SHORT } from "@/components/common/kind-badge";
+import { formatMoney, type Currency } from "@/lib/money";
+import { UNIT_LABELS } from "@/lib/billing";
+import { PROJECT_KINDS, PROJECT_STATUSES, type ProjectKind, type ProjectStatus, type RateUnit } from "@/lib/types";
 
 export type ProjectRow = {
   id: string;
   title: string;
   clientName: string;
   status: ProjectStatus;
+  kind: ProjectKind;
+  /** Fixed: milestone progress. Tasks: percentage of tasks done. Retainers: not shown. */
   progress: number;
+  /** Task projects only. */
+  tasksDone: number;
+  tasksTotal: number;
+  /** Retainers only. */
+  rate: number;
+  rateUnit: RateUnit | null;
+  currency: Currency;
   deadline: string | null;
   archived: boolean;
   /** Deadline is in the past and the project is still open. Computed on the server. */
@@ -33,6 +45,30 @@ const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
   ...PROJECT_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
 ];
+
+const KIND_OPTIONS = [
+  { value: "all", label: "All kinds" },
+  ...PROJECT_KINDS.map((k) => ({ value: k, label: KIND_SHORT[k] })),
+];
+
+/** The kind specific middle part of a row: a progress bar, a task count, or the retainer rate. */
+function Progress({ row, className }: { row: ProjectRow; className?: string }) {
+  if (row.kind === "retainer") {
+    return (
+      <span className="text-sm text-muted-foreground tabular-nums">
+        {formatMoney(row.rate, row.currency)} <span className="text-xs">/ {row.rateUnit ? UNIT_LABELS[row.rateUnit].singular : "hour"}</span>
+      </span>
+    );
+  }
+  return (
+    <div className={cn("flex items-center gap-3", className)}>
+      <AnimatedBar value={row.progress} label="Project progress" className="h-1.5 flex-1" />
+      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+        {row.kind === "tasks" ? `${row.tasksDone} of ${row.tasksTotal}` : `${row.progress}%`}
+      </span>
+    </div>
+  );
+}
 
 function Deadline({ row }: { row: ProjectRow }) {
   if (!row.deadline) return <span className="text-muted-foreground">No deadline</span>;
@@ -47,6 +83,7 @@ function Deadline({ row }: { row: ProjectRow }) {
 export function ProjectsList({ projects }: { projects: ProjectRow[] }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
+  const [kind, setKind] = useState("all");
   const [showArchived, setShowArchived] = useState(false);
 
   const visible = useMemo(() => {
@@ -54,12 +91,13 @@ export function ProjectsList({ projects }: { projects: ProjectRow[] }) {
     return projects.filter((p) => {
       if (p.archived && !showArchived) return false;
       if (status !== "all" && p.status !== status) return false;
+      if (kind !== "all" && p.kind !== kind) return false;
       if (!q) return true;
       return p.title.toLowerCase().includes(q) || p.clientName.toLowerCase().includes(q);
     });
-  }, [projects, query, status, showArchived]);
+  }, [projects, query, status, kind, showArchived]);
 
-  const filtering = query.trim() !== "" || status !== "all" || showArchived;
+  const filtering = query.trim() !== "" || status !== "all" || kind !== "all" || showArchived;
 
   return (
     <div className="flex flex-col gap-4">
@@ -82,6 +120,13 @@ export function ProjectsList({ projects }: { projects: ProjectRow[] }) {
           ariaLabel="Filter by status"
           className="w-full sm:w-44"
         />
+        <SimpleSelect
+          value={kind}
+          onValueChange={setKind}
+          options={KIND_OPTIONS}
+          ariaLabel="Filter by kind"
+          className="w-full sm:w-36"
+        />
         <div className="flex items-center justify-between gap-4 sm:ml-auto sm:justify-end">
           <p className="text-sm text-muted-foreground tabular-nums" aria-live="polite">
             {visible.length} {visible.length === 1 ? "project" : "projects"}
@@ -101,7 +146,7 @@ export function ProjectsList({ projects }: { projects: ProjectRow[] }) {
             <EmptyDescription>
               {projects.length === 0
                 ? "Create a project to start tracking progress. Use the New project button above."
-                : "Try a different search or status, or show archived projects."}
+                : "Try a different search, status or kind, or show archived projects."}
             </EmptyDescription>
           </EmptyHeader>
           {projects.length > 0 && filtering ? (
@@ -112,6 +157,7 @@ export function ProjectsList({ projects }: { projects: ProjectRow[] }) {
                 onClick={() => {
                   setQuery("");
                   setStatus("all");
+                  setKind("all");
                   setShowArchived(false);
                 }}
               >
@@ -134,11 +180,11 @@ export function ProjectsList({ projects }: { projects: ProjectRow[] }) {
                   </Link>
                   <ProjectStatusBadge status={p.status} />
                 </div>
-                <span className="text-sm text-muted-foreground">{p.clientName}</span>
-                <div className="flex items-center gap-3">
-                  <AnimatedBar value={p.progress} label="Project progress" className="h-1.5 flex-1" />
-                  <span className="text-xs text-muted-foreground tabular-nums">{p.progress}%</span>
+                <div className="flex items-center gap-2">
+                  <KindBadge kind={p.kind} />
+                  <span className="min-w-0 truncate text-sm text-muted-foreground">{p.clientName}</span>
                 </div>
+                <Progress row={p} />
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <Deadline row={p} />
                   {p.archived ? <Badge variant="outline">Archived</Badge> : null}
@@ -152,6 +198,7 @@ export function ProjectsList({ projects }: { projects: ProjectRow[] }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Project</TableHead>
+                  <TableHead>Kind</TableHead>
                   <TableHead>Client</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-48">Progress</TableHead>
@@ -174,15 +221,15 @@ export function ProjectsList({ projects }: { projects: ProjectRow[] }) {
                         </Badge>
                       ) : null}
                     </TableCell>
+                    <TableCell>
+                      <KindBadge kind={p.kind} />
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{p.clientName}</TableCell>
                     <TableCell>
                       <ProjectStatusBadge status={p.status} />
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-3">
-                        <AnimatedBar value={p.progress} label="Project progress" className="h-1.5 w-28" />
-                        <span className="w-9 text-right text-xs text-muted-foreground tabular-nums">{p.progress}%</span>
-                      </div>
+                      <Progress row={p} className="w-40" />
                     </TableCell>
                     <TableCell>
                       <Deadline row={p} />

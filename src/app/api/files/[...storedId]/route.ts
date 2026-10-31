@@ -3,8 +3,8 @@ import { getSession } from "@/lib/auth/session";
 import { privateDownloadUrl, projectIdOf } from "@/lib/cloudinary";
 import { canAccessProject } from "@/server/data/access";
 import { col } from "@/server/data/refs";
-import { fromDoc } from "@/server/data/convert";
-import type { Project } from "@/lib/types";
+import { projectFromDoc } from "@/server/data/convert";
+
 
 /**
  * GET /api/files/{storedId} serves any stored file. Link to it with fileUrl()
@@ -20,7 +20,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/files/[...s
   const projectId = projectIdOf(storedId);
   if (projectId) {
     const snap = await col.projects().doc(projectId).get();
-    if (!snap.exists || !canAccessProject(session, fromDoc<Project>(snap))) {
+    if (!snap.exists || !canAccessProject(session, projectFromDoc(snap))) {
       return new NextResponse("Not found", { status: 404 });
     }
   } else if (session.role !== "admin") {

@@ -7,6 +7,8 @@ import { ProjectStatusBadge } from "@/components/projects-core/project-status-ba
 import { PortalPaymentsSection } from "@/components/portal/payments-section";
 import { PortalAgreementSection } from "@/components/portal/agreement-section";
 import { PortalRevisionsSection } from "@/components/portal/revisions-section";
+import { PortalTasksSection } from "@/components/portal/tasks-section";
+import { KindBadge } from "@/components/common/kind-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { formatInstant, formatIsoDate } from "@/lib/dates";
 import { progress } from "@/lib/projects";
@@ -20,8 +22,9 @@ export const metadata = { title: "Project" };
 export default async function PortalProjectPage({ params }: PageProps<"/portal/projects/[id]">) {
   const { id } = await params;
   const { project } = await getAccessibleProject(id);
+  const fixed = project.kind === "fixed";
   const [milestones, activity] = await Promise.all([
-    listMilestones(project.id),
+    fixed ? listMilestones(project.id) : Promise.resolve([]),
     listProjectActivity(project.id, { clientOnly: true }),
   ]);
 
@@ -39,6 +42,7 @@ export default async function PortalProjectPage({ params }: PageProps<"/portal/p
           title={project.title}
           description={
             <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              {fixed ? null : <KindBadge kind={project.kind} />}
               <ProjectStatusBadge status={project.status} />
               {project.deadline ? (
                 <span className="inline-flex items-center gap-1.5">
@@ -54,6 +58,7 @@ export default async function PortalProjectPage({ params }: PageProps<"/portal/p
         ) : null}
       </div>
 
+      {fixed ? (
       <section className="flex flex-col gap-4" aria-labelledby="portal-progress">
         <h2 id="portal-progress" className="text-xl font-semibold tracking-tight">
           Progress
@@ -101,10 +106,12 @@ export default async function PortalProjectPage({ params }: PageProps<"/portal/p
           </ul>
         ) : null}
       </section>
+      ) : null}
 
+      <PortalTasksSection projectId={project.id} />
       <PortalPaymentsSection projectId={project.id} />
-      <PortalAgreementSection projectId={project.id} />
-      <PortalRevisionsSection projectId={project.id} />
+      {fixed ? <PortalAgreementSection projectId={project.id} /> : null}
+      {fixed ? <PortalRevisionsSection projectId={project.id} /> : null}
 
       <section className="flex flex-col gap-4" aria-labelledby="portal-activity">
         <div>

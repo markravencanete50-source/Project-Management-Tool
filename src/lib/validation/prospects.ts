@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { CURRENCIES, toMinor } from "@/lib/money";
 import { isoDateSchema } from "@/lib/dates";
-import { LOST_REASONS, PROSPECT_SOURCES, PROSPECT_STAGES } from "@/lib/types";
+import { LOST_REASONS, PROJECT_KINDS, PROSPECT_SOURCES, PROSPECT_STAGES, RATE_UNITS } from "@/lib/types";
 
 const emailField = z
   .string()
@@ -32,18 +32,36 @@ const followUpField = z
     return parsed.data;
   });
 
-/** Form input: every field is a string as typed. Output has estimatedValue in minor units. */
-export const prospectInputSchema = z.object({
-  name: z.string().trim().min(1, "Name is required").max(200),
-  company: z.string().trim().max(200),
-  email: emailField,
-  source: z.enum(PROSPECT_SOURCES),
-  service: z.string().trim().max(200),
-  estimatedValue: moneyField,
-  currency: z.enum(CURRENCIES),
-  nextFollowUp: followUpField,
-  notes: z.string().max(10000),
-});
+/**
+ * Form input: every field is a string as typed. Output has estimatedValue in
+ * minor units. The engagement kind decides which extra fields apply: a
+ * retainer needs a rate and a unit, the other kinds store no rate.
+ */
+export const prospectInputSchema = z
+  .object({
+    name: z.string().trim().min(1, "Name is required").max(200),
+    company: z.string().trim().max(200),
+    email: emailField,
+    source: z.enum(PROSPECT_SOURCES),
+    service: z.string().trim().max(200),
+    engagementKind: z.enum(PROJECT_KINDS),
+    estimatedValue: moneyField,
+    currency: z.enum(CURRENCIES),
+    rateUnit: z.enum(RATE_UNITS),
+    rate: moneyField,
+    nextFollowUp: followUpField,
+    notes: z.string().max(10000),
+  })
+  .superRefine((v, ctx) => {
+    if (v.engagementKind === "retainer" && v.rate <= 0) {
+      ctx.addIssue({ code: "custom", path: ["rate"], message: "Enter the rate per hour or day" });
+    }
+  })
+  .transform((v) => ({
+    ...v,
+    rate: v.engagementKind === "retainer" ? v.rate : 0,
+    rateUnit: v.engagementKind === "retainer" ? v.rateUnit : null,
+  }));
 export type ProspectFormValues = z.input<typeof prospectInputSchema>;
 export type ProspectInput = z.output<typeof prospectInputSchema>;
 

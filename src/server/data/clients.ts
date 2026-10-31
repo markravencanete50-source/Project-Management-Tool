@@ -2,8 +2,8 @@ import "server-only";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/session";
 import { col } from "@/server/data/refs";
-import { fromDoc, fromDocs } from "@/server/data/convert";
-import type { Client, Project } from "@/lib/types";
+import { fromDoc, fromDocs, projectsFromDocs } from "@/server/data/convert";
+import type { Client } from "@/lib/types";
 
 export type ClientListItem = Client & { projectCount: number };
 
@@ -12,7 +12,7 @@ export async function listClients(): Promise<ClientListItem[]> {
   await requireAdmin();
   const [clientsSnap, projectsSnap] = await Promise.all([col.clients().get(), col.projects().get()]);
   const counts = new Map<string, number>();
-  for (const p of fromDocs<Project>(projectsSnap)) {
+  for (const p of projectsFromDocs(projectsSnap)) {
     if (p.archivedAt) continue;
     counts.set(p.clientId, (counts.get(p.clientId) ?? 0) + 1);
   }

@@ -1,22 +1,36 @@
-import { CalendarCheck, FolderKanban, Hourglass, Target, TrendingUp, Trophy, Wallet } from "lucide-react";
+import { cookies } from "next/headers";
+import { CalendarCheck, FolderKanban, Hourglass, Repeat, Target, TrendingUp, Trophy, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { AcceptedChart } from "@/components/dashboard/accepted-chart";
 import { AnimatedNumber } from "@/components/dashboard/animated-number";
 import { WIN_RATE_DAYS } from "@/components/dashboard/calc";
+import { CurrencyViewToggle, FxInfo, FxUnavailableNotice } from "@/components/dashboard/currency-view";
 import { EarningsSection } from "@/components/dashboard/earnings-chart";
-import { KPI_NUMBER, KpiCard, KpiEmpty, KpiHint, MoneyKpi } from "@/components/dashboard/kpi-card";
+import { KPI_NUMBER, KpiCard, KpiEmpty, KpiHint, MoneyKpi, PhpKpi } from "@/components/dashboard/kpi-card";
 import { MotionRoot, Reveal, Stagger } from "@/components/dashboard/motion";
 import { NeedsAttention } from "@/components/dashboard/needs-attention";
 import { ProgressRing } from "@/components/dashboard/progress-ring";
 import { Sparkline } from "@/components/dashboard/sparkline";
 import { TrendBadge } from "@/components/dashboard/trend-badge";
+import { DASH_VIEW_COOKIE, type DashView } from "@/lib/dash-view";
+import { rateOf, timeAgo } from "@/lib/fx/convert";
 import { CURRENCIES, type Currency } from "@/lib/money";
 import { getDashboardData } from "@/server/data/dashboard";
 
-export default async function DashboardPage() {
-  const data = await getDashboardData();
-  const { winRate, acceptedSummary } = data;
+function chosenView(param: string | string[] | undefined, cookie: string | undefined): DashView {
+  const value = Array.isArray(param) ? param[0] : param;
+  const pick = value ?? cookie;
+  return pick === "original" ? "original" : "php";
+}
+
+export default async function DashboardPage({ searchParams }: PageProps<"/admin">) {
+  const [sp, jar] = await Promise.all([searchParams, cookies()]);
+  const wanted = chosenView(sp.view, jar.get(DASH_VIEW_COOKIE)?.value);
+  const data = await getDashboardData({ convert: wanted === "php" });
+  const { winRate, acceptedSummary, converted } = data;
   const year = data.today.slice(0, 4);
+  // The PHP view needs rates; without them the page shows original currencies and says so.
+  const view: DashView = wanted === "php" && converted ? "php" : "original";
 
   // Per currency trends and sparklines come straight from the monthly series.
   const monthTrends: Partial<Record<Currency, (typeof data.earningsSeries)[number]["summary"]>> = {};
@@ -31,23 +45,77 @@ export default async function DashboardPage() {
     yearSparks[currency] = series.points.filter((p) => p.month.startsWith(year)).map((p) => (running += p.amount));
   }
 
+  const phpSeries = converted?.earningsSeries[0];
+  const phpMonthSpark = phpSeries?.points.map((p) => p.amount);
+  let phpRunning = 0;
+  const phpYearSpark = phpSeries?.points.filter((p) => p.month.startsWith(year)).map((p) => (phpRunning += p.amount));
+
+  const retainerHint =
+    data.activeRetainers > 0
+      ? `${data.activeRetainers} active ${data.activeRetainers === 1 ? "retainer" : "retainers"}. Includes months still in progress.`
+      : "Retainer months with logged time, in progress included";
+  const pipelineHint = data.pipelineIncludesRetainers ? "Open prospects, unweighted. Includes monthly retainers." : "Open prospects, unweighted";
+
+  const rateRows = converted
+    ? converted.rates.quotes.map((q) => ({
+        currency: q.currency,
+        rate: (rateOf(converted.rates, q.currency) ?? 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
+        source: q.source,
+        updated: timeAgo(q.updatedAt),
+      }))
+    : [];
+
   return (
     <MotionRoot>
       <div className="min-w-0">
-        <PageHeader title="Dashboard" description="Money received, projects accepted and what needs your attention." />
+        <PageHeader
+          title="Dashboard"
+          description="Money received, projects accepted and what needs your attention."
+          actions={<CurrencyViewToggle value={wanted} />}
+        />
+
+        {wanted === "php" && !converted ? <FxUnavailableNotice /> : null}
+        {view === "php" && converted ? (
+          <FxInfo
+            provider={converted.rates.provider}
+            updatedAgo={rateRows.length > 0 ? timeAgo(converted.rates.updatedAt) : null}
+            stale={converted.rates.stale}
+            rows={rateRows}
+          />
+        ) : null}
 
         <Stagger className="grid grid-cols-2 gap-3 xl:grid-cols-12 xl:gap-4">
           <KpiCard label="Earned this month" icon={Wallet} tone="primary" className="col-span-2 sm:col-span-1 xl:col-span-3">
-            <MoneyKpi value={data.earnedThisMonth} empty="Nothing received yet this month" trends={monthTrends} sparklines={monthSparks} />
+            {view === "php" && converted ? (
+              <PhpKpi
+                value={converted.earnedThisMonth}
+                original={data.earnedThisMonth}
+                empty="Nothing received yet this month"
+                trend={phpSeries?.summary}
+                sparkline={phpMonthSpark}
+              />
+            ) : (
+              <MoneyKpi value={data.earnedThisMonth} empty="Nothing received yet this month" trends={monthTrends} sparklines={monthSparks} />
+            )}
           </KpiCard>
 
           <KpiCard label="Earned this year" icon={TrendingUp} tone="success" className="col-span-2 sm:col-span-1 xl:col-span-3">
-            <MoneyKpi
-              value={data.earnedThisYear}
-              empty="Nothing received yet this year"
-              sparklines={yearSparks}
-              hint={`Year to date, since 1 Jan ${year}`}
-            />
+            {view === "php" && converted ? (
+              <PhpKpi
+                value={converted.earnedThisYear}
+                original={data.earnedThisYear}
+                empty="Nothing received yet this year"
+                sparkline={phpYearSpark}
+                hint={`Year to date, since 1 Jan ${year}`}
+              />
+            ) : (
+              <MoneyKpi
+                value={data.earnedThisYear}
+                empty="Nothing received yet this year"
+                sparklines={yearSparks}
+                hint={`Year to date, since 1 Jan ${year}`}
+              />
+            )}
           </KpiCard>
 
           <KpiCard label="Accepted this month" icon={CalendarCheck} tone="violet" className="col-span-1 xl:col-span-3">
@@ -67,15 +135,41 @@ export default async function DashboardPage() {
             <KpiHint>Projects in progress right now</KpiHint>
           </KpiCard>
 
-          <KpiCard label="Pending balance" icon={Hourglass} tone="warning" className="col-span-2 sm:col-span-1 xl:col-span-4">
-            <MoneyKpi value={data.pendingBalance} empty="Nothing pending" hint="Still to collect on active and on hold projects" />
+          <KpiCard label="Pending balance" icon={Hourglass} tone="warning" className="col-span-2 sm:col-span-1 xl:col-span-3">
+            {view === "php" && converted ? (
+              <PhpKpi
+                value={converted.pendingBalance}
+                original={data.pendingBalance}
+                empty="Nothing pending"
+                hint="Still to collect on active and on hold projects"
+              />
+            ) : (
+              <MoneyKpi value={data.pendingBalance} empty="Nothing pending" hint="Still to collect on active and on hold projects" />
+            )}
           </KpiCard>
 
-          <KpiCard label="Pipeline value" icon={Target} tone="info" className="col-span-2 sm:col-span-1 xl:col-span-4">
-            <MoneyKpi value={data.pipelineValue} empty="Your pipeline is empty" hint="Open prospects, unweighted" />
+          <KpiCard label="Recurring billed this month" icon={Repeat} tone="violet" className="col-span-2 sm:col-span-1 xl:col-span-3">
+            {view === "php" && converted ? (
+              <PhpKpi
+                value={converted.recurringBilledThisMonth}
+                original={data.recurringBilledThisMonth}
+                empty="No retainer time logged this month"
+                hint={retainerHint}
+              />
+            ) : (
+              <MoneyKpi value={data.recurringBilledThisMonth} empty="No retainer time logged this month" hint={retainerHint} />
+            )}
           </KpiCard>
 
-          <KpiCard label={`Win rate, last ${WIN_RATE_DAYS} days`} icon={Trophy} tone="success" className="col-span-2 xl:col-span-4">
+          <KpiCard label="Pipeline value" icon={Target} tone="info" className="col-span-2 sm:col-span-1 xl:col-span-3">
+            {view === "php" && converted ? (
+              <PhpKpi value={converted.pipelineValue} original={data.pipelineValue} empty="Your pipeline is empty" hint={pipelineHint} />
+            ) : (
+              <MoneyKpi value={data.pipelineValue} empty="Your pipeline is empty" hint={pipelineHint} />
+            )}
+          </KpiCard>
+
+          <KpiCard label={`Win rate, last ${WIN_RATE_DAYS} days`} icon={Trophy} tone="success" className="col-span-2 sm:col-span-1 xl:col-span-3">
             {winRate.rate === null ? (
               <>
                 <KpiEmpty>No prospects closed in this period yet</KpiEmpty>
@@ -96,7 +190,11 @@ export default async function DashboardPage() {
         </Stagger>
 
         <div className="mt-8">
-          <EarningsSection monthly={data.earningsSeries} weekly={data.weeklyEarningsSeries} />
+          <EarningsSection
+            monthly={view === "php" && converted ? converted.earningsSeries : data.earningsSeries}
+            weekly={view === "php" && converted ? converted.weeklyEarningsSeries : data.weeklyEarningsSeries}
+            converted={view === "php" && Boolean(converted)}
+          />
         </div>
 
         <div className="mt-8 grid items-start gap-4 xl:grid-cols-5">

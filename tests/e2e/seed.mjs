@@ -31,7 +31,19 @@ export const IDS = {
   projA2: "proj-a-draft",
   projB1: "proj-b-active",
   projB2: "proj-b-php",
+  projR1: "proj-a-retainer",
+  projT1: "proj-b-tasks",
 };
+
+/** Fixed rates the e2e app is started with (FX_STUB_RATES), so no run ever touches the network. */
+export const FX_RATES = { GBP: 70, USD: 56 };
+export const FX_STUB_RATES = `GBP=${FX_RATES.GBP},USD=${FX_RATES.USD}`;
+
+/** Last day of the month before `iso`, and the 15th of that month. */
+export function previousMonthDates(iso) {
+  const lastDay = addDays(`${iso.slice(0, 8)}01`, -1);
+  return { lastDay, mid: `${lastDay.slice(0, 8)}15` };
+}
 
 export async function seed() {
   if (!getApps().length) initializeApp({ projectId: PROJECT_ID });
@@ -77,6 +89,10 @@ export async function seed() {
     { id: "pr-neg", name: "Nate Negotiating", company: "Deal Works", stage: "negotiating", source: "website", estimatedValue: 500000, currency: "USD", nextFollowUp: null },
     { id: "pr-won", name: "Will Won", company: "Winners", stage: "won", source: "cold_outreach", estimatedValue: 200000, currency: "GBP", nextFollowUp: null, closedAt: now },
     { id: "pr-lost", name: "Lena Lost", company: "Lostco", stage: "lost", source: "other", estimatedValue: 100000, currency: "GBP", nextFollowUp: null, lostReason: "price", closedAt: now },
+    {
+      id: "pr-ret", name: "Rita Retainer", company: "Monthly Co", stage: "negotiating", source: "referral", estimatedValue: 300000, currency: "USD",
+      nextFollowUp: null, engagementKind: "retainer", rateUnit: "hour", rate: 4000, service: "Ongoing development",
+    },
   ];
   for (const p of prospects) {
     const { id, ...rest } = p;
@@ -92,6 +108,9 @@ export async function seed() {
         convertedClientId: null,
         convertedProjectId: null,
         archivedAt: null,
+        engagementKind: "fixed",
+        rateUnit: null,
+        rate: 0,
         ...rest,
         ...base,
       });
@@ -115,6 +134,20 @@ export async function seed() {
       revisionAllowance: 2, acceptedAt: ts(addDays(today, -80)), startDate: addDays(today, -80), deadline: addDays(today, 20),
     },
   ];
+  // Engagement kinds. The four projects above deliberately have no kind field: that is what every
+  // project written before kinds existed looks like, and it must keep behaving as fixed price.
+  projects.push(
+    {
+      id: IDS.projR1, clientId: IDS.clientA, title: "Acme Support Retainer", status: "active", currency: "GBP", contractValue: 0,
+      revisionAllowance: 0, acceptedAt: ts(addDays(today, -60)), startDate: addDays(today, -60), deadline: null,
+      kind: "retainer", rateUnit: "hour", rate: 5000,
+    },
+    {
+      id: IDS.projT1, clientId: IDS.clientB, title: "Beta Task Support", status: "active", currency: "USD", contractValue: 0,
+      revisionAllowance: 0, acceptedAt: ts(addDays(today, -45)), startDate: addDays(today, -45), deadline: null,
+      kind: "tasks", rateUnit: null, rate: 0,
+    },
+  );
   for (const p of projects) {
     const { id, ...rest } = p;
     await db.collection("projects").doc(id).set({ description: `Scope for ${p.title}`, archivedAt: null, ...rest, ...base });
@@ -168,6 +201,24 @@ export async function seed() {
   await sub(IDS.projB2, "schedule", "s1", { label: "Deposit", kind: "deposit", amountDue: 1500000, dueDate: addDays(today, -75), order: 0 });
   await sub(IDS.projB2, "schedule", "s2", { label: "Final", kind: "final", amountDue: 3500000, dueDate: addDays(today, 15), order: 1 });
   await sub(IDS.projB2, "payments", "pay1", { amount: 1500000, paidOn: addDays(today, -70), method: "gcash", receiptPublicId: null, note: "Deposit", ...base });
+
+  // R1: retainer at 50.00 per hour. Last month: 10h + 5h (75000, overdue and part paid), this month: 2h (10000, in progress).
+  // The payment is dated 40 days ago so it never lands in the current month's earnings.
+  const prev = previousMonthDates(today);
+  await sub(IDS.projR1, "timeEntries", "t1", { date: prev.mid, quantityHundredths: 1000, note: "Sprint work", ...base });
+  await sub(IDS.projR1, "timeEntries", "t2", { date: prev.lastDay, quantityHundredths: 500, note: "Month end fixes", ...base });
+  await sub(IDS.projR1, "timeEntries", "t3", { date: today, quantityHundredths: 200, note: "INTERNAL-ENTRY-NOTE call", ...base });
+  await sub(IDS.projR1, "payments", "pay1", { amount: 30000, paidOn: addDays(today, -40), method: "bank", receiptPublicId: null, note: "Part payment", ...base });
+
+  // T1: priced tasks. Logo (150.00) and Landing page (400.00) are done, SEO audit (200.00) is not. 200.00 paid.
+  const task = (id, title, price, status, order, doneDaysAgo) =>
+    sub(IDS.projT1, "tasks", id, {
+      title, price, status, order, doneAt: status === "done" ? ts(addDays(today, -doneDaysAgo)) : null, ...base,
+    });
+  await task("k1", "Logo design", 15000, "done", 0, 5);
+  await task("k2", "Landing page", 40000, "done", 1, 2);
+  await task("k3", "SEO audit", 20000, "todo", 2, 0);
+  await sub(IDS.projT1, "payments", "pay1", { amount: 20000, paidOn: addDays(today, -40), method: "wise", receiptPublicId: null, note: "First task payment", ...base });
 
   const act = (id, data) => db.collection("activity").doc(id).set({ prospectId: null, clientId: null, projectId: null, createdAt: now, ...data });
   await act("a1", { type: "payment_recorded", message: CLIENT_NOTE, actor: "admin", visibility: "client", projectId: IDS.projA1, clientId: IDS.clientA });

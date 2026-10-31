@@ -19,6 +19,21 @@ export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 /** Statuses the admin may set by hand. draft and agreement_sent are set by flows. */
 export const MANUAL_PROJECT_STATUSES = ["active", "on_hold", "completed", "cancelled"] as const;
 
+/**
+ * Engagement kind. "fixed" is the original fixed-price project (contract value,
+ * schedule, milestones, agreements, revisions). "retainer" is billed by logged
+ * time at an hourly or daily rate, monthly in arrears. "tasks" is billed per
+ * priced task, owed when the task is marked done. Documents with no kind are "fixed".
+ */
+export const PROJECT_KINDS = ["fixed", "retainer", "tasks"] as const;
+export type ProjectKind = (typeof PROJECT_KINDS)[number];
+
+export const RATE_UNITS = ["hour", "day"] as const;
+export type RateUnit = (typeof RATE_UNITS)[number];
+
+export const TASK_STATUSES = ["todo", "done"] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+
 export const SCHEDULE_KINDS = ["deposit", "milestone", "final", "change_order"] as const;
 export type ScheduleKind = (typeof SCHEDULE_KINDS)[number];
 
@@ -62,8 +77,15 @@ export type Prospect = {
   email: string;
   source: ProspectSource;
   service: string;
+  /** Fixed and tasks: the project value. Retainer: the monthly value. */
   estimatedValue: number;
   currency: Currency;
+  /** Which kind of project this becomes. "fixed" for prospects written before kinds existed. */
+  engagementKind: ProjectKind;
+  /** Retainer prospects only. Null otherwise. */
+  rateUnit: RateUnit | null;
+  /** Retainer prospects only, minor units per unit. 0 otherwise. */
+  rate: number;
   stage: ProspectStage;
   lostReason: LostReason | null;
   nextFollowUp: IsoDate | null;
@@ -86,9 +108,41 @@ export type Project = {
   deadline: IsoDate | null;
   acceptedAt: Date | null;
   currency: Currency;
+  /** Always "fixed" for documents written before engagement kinds existed. */
+  kind: ProjectKind;
+  /** Fixed projects only. 0 for the other kinds. */
   contractValue: number;
+  /** Retainers only: what one unit of logged time costs, in minor units. 0 otherwise. */
+  rate: number;
+  /** Retainers only. Null otherwise. */
+  rateUnit: RateUnit | null;
   revisionAllowance: number;
   archivedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+/** projects/{id}/timeEntries/{id}: one block of logged time on a retainer. */
+export type TimeEntry = {
+  id: string;
+  /** Manila calendar date the work was done. */
+  date: IsoDate;
+  /** Hours or days, times 100 (7.5 hours is 750). */
+  quantityHundredths: number;
+  note: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+/** projects/{id}/tasks/{id}: one priced task. Owed once it is done. */
+export type Task = {
+  id: string;
+  title: string;
+  /** Minor units, billed the moment the task is marked done. */
+  price: number;
+  status: TaskStatus;
+  order: number;
+  doneAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };

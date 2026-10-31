@@ -10,7 +10,8 @@ This app does NOT process payments. Clients pay me outside the app (bank, PayPal
 - A project counts as "accepted" when its agreement is signed. Switchable in settings (signed | deposit_paid). Changing the setting applies going forward only; it never rewrites past acceptedAt values.
 - Clients can see their payment schedule, payments received, and pending balance in the portal.
 - Single admin (me). Design roles so a "staff" role can be added later.
-- Currencies: GBP, USD, PHP. No conversion. Totals are always shown per currency.
+- Currencies: GBP, USD, PHP. Stored amounts are never converted. Totals are shown per currency, except the dashboard's default PHP view (see Dashboard currency view), which is a display conversion.
+- Engagement kinds (added after v1): every project and every prospect has a kind. "fixed" (the original fixed-price project, and the default for every document with no kind), "retainer" (ongoing work billed by logged hours or days, monthly in arrears) and "tasks" (a list of priced tasks, each billed when done). Existing documents are fixed and behave exactly as before.
 - All data is read and written on the server with firebase-admin. The browser uses the Firebase SDK only for signing in. No Firestore reads or writes from the browser.
 - Totals, balances, progress, overdue items, and monthly stats are computed on read from source documents. Nothing derived is stored, so nothing can drift. Revisit only if a single page needs more than about 2,000 document reads.
 - Nothing is hard-deleted in v1. Clients, prospects, and projects are archived (archivedAt). Payment entries and schedule lines can be deleted, because they are just data entry.
@@ -62,7 +63,9 @@ clients/{clientId}
 
 prospects/{prospectId}
   name, company, email (lowercased), source ("referral"|"upwork"|"linkedin"|"cold_outreach"|"website"|"other"),
-  service, estimatedValue (int, minor units), currency,
+  service, estimatedValue (int, minor units; the monthly value for a retainer prospect), currency,
+  engagementKind ("fixed"|"retainer"|"tasks", missing means "fixed"),
+  rateUnit ("hour"|"day"|null) and rate (int, minor units per unit, 0 unless retainer),
   stage ("new"|"contacted"|"proposal_sent"|"negotiating"|"won"|"lost"),
   lostReason ("price"|"timing"|"no_response"|"went_elsewhere"|"other"|null), nextFollowUp ("YYYY-MM-DD"|null), notes,
   convertedClientId, convertedProjectId, archivedAt, createdAt, updatedAt, closedAt
@@ -71,12 +74,19 @@ projects/{projectId}
   clientId, title, description,
   status ("draft"|"agreement_sent"|"active"|"on_hold"|"completed"|"cancelled"),
   startDate, deadline, acceptedAt (Timestamp|null), currency, contractValue (int),
-  revisionAllowance (int), archivedAt, createdAt, updatedAt
+  revisionAllowance (int), archivedAt, createdAt, updatedAt,
+  kind ("fixed"|"retainer"|"tasks", missing means "fixed"),
+  rateUnit ("hour"|"day"|null) and rate (int, minor units per unit): retainers only, otherwise null and 0.
+  contractValue and revisionAllowance are 0 for retainer and tasks projects and are not shown for them.
 
 projects/{projectId}/milestones/{id}   title, weight (int), order, done, doneAt
 projects/{projectId}/schedule/{id}     label, kind ("deposit"|"milestone"|"final"|"change_order"), amountDue (int), dueDate, order
 projects/{projectId}/payments/{id}     amount (int), paidOn, method ("bank"|"paypal"|"wise"|"gcash"|"other"),
                                        receiptPublicId (string|null), note, createdAt, updatedAt
+projects/{projectId}/timeEntries/{id} date ("YYYY-MM-DD", Manila), quantityHundredths (int; 7.5 hours is 750), note, createdAt, updatedAt
+                                       (retainers only)
+projects/{projectId}/tasks/{id}        title, price (int, minor units), status ("todo"|"done"), order, doneAt (Timestamp|null), createdAt, updatedAt
+                                       (tasks projects only)
 projects/{projectId}/agreements/{id}   version, status ("draft"|"sent"|"viewed"|"signed"|"void"),
                                        snapshot (scope, price, schedule, revisionAllowance, timeline at generation time),
                                        pdfPublicId, pdfHash, signedPdfPublicId, signedPdfHash, signaturePublicId,
@@ -95,19 +105,25 @@ loginTokens/{tokenHash}
 settings/app
   timezone, acceptedRule ("signed"|"deposit_paid"), defaultRevisionAllowance, businessName, businessEmail, agreementTemplate
 
+Time entries and tasks need no index: they are read per project, or with unfiltered collection-group scans (collection groups "timeEntries" and "tasks") on the dashboard, like payments and schedule.
+
 Create firestore.indexes.json for every compound and collection-group query you use. firestore.rules denies all reads and writes from client SDKs (firebase-admin bypasses rules; the rules are a backstop in case the browser SDK is ever misused).
 
 ## Business logic (server, in src/lib/finance.ts and src/lib/projects.ts, pure functions with unit tests)
 - Progress: sum of weights of done milestones, as a percentage of the total weight. When adding or removing a milestone, the form shows the current total and blocks saving until weights sum to 100.
-- Paid: sum of payments[].amount. Pending: contractValue minus paid (can be negative, shown as "overpaid").
+- Paid: sum of payments[].amount. Pending: contractValue minus paid (can be negative, shown as "overpaid"). For retainer and tasks projects, pending is the billed total minus paid (see Retainers and Tasks).
 - Schedule: the schedule must sum to contractValue. Saving a schedule or contract value that breaks this shows the difference and blocks saving. A project with no schedule is allowed; it simply has no due dates and nothing can be overdue.
 - Allocation: payments are applied to schedule lines in dueDate order (oldest first). No manual allocation. A schedule line is "paid", "partly paid", or "unpaid" based on this.
 - Overdue: a schedule line is overdue when dueDate < today (Asia/Manila) and it is not fully covered by the allocation.
 - Monthly earnings: payments grouped by the month of paidOn, per currency.
+- Bill lines: the allocation works on "bill lines" ({label, amountDue, dueDate}). A fixed project's stored schedule lines are bill lines. Retainer and tasks projects have no stored schedule: their lines are derived on read from time entries or done tasks and go through the same allocation (oldest due date first, paid / partly paid / unpaid, overdue when dueDate < today and not covered). Pure code: src/lib/finance.ts (allocateBills, billsFinance) and src/lib/billing.ts (derived lines, financeFor).
+- Retainers: the owner logs time (date, hours or days with decimals, note). An entry is worth round(quantityHundredths * rate / 100) minor units, so rounding happens per entry. Billing is in arrears by Manila calendar month: each month with entries is one bill line (label "Nov 2026", amountDue the sum of that month's entries, dueDate the last day of the month, February and leap years included). The current month is "in progress" and cannot be overdue until its last day has passed. A retainer starts "active" with acceptedAt set to its start date (today when blank) and has no agreement or revisions. Status can be set to on_hold or completed (ended). Editing the rate re-prices all logged time because bills are derived from the current rate. The client sees a monthly summary and payments, never individual entries or notes.
+- Tasks: a task has a title and a price and is todo or done. It is owed from the moment it is marked done: one bill line (label the task title, amountDue its price, dueDate the Manila date of doneAt). Marking it back to todo removes the line. A tasks project starts "active" with acceptedAt set to its start date and has no agreement, revisions, milestones or weights; progress is "x of y tasks done". The client sees the task list with price and status, and payments.
+- Accepted counting: because retainer and tasks projects are accepted when created, they count in "accepted this month" (and all time) for the month of their start date.
 - Accepted: acceptedAt is set once, by the server, at the moment the event happens. With rule "signed", signing sets it. With rule "deposit_paid", the payment entry that first makes the deposit lines fully covered sets it. Either way the project moves to "active" if it was "draft" or "agreement_sent". Deleting a payment never clears acceptedAt; I can clear it manually if I made a mistake.
 - Project status: "agreement_sent" and "active" are set automatically by the flows above. "on_hold", "completed", "cancelled", and moving back to "active" are manual. "In revision" is not a status; show a badge when the project has an open revision.
 - Prospects: "added this month" uses createdAt. Won and lost count in the month of closedAt. Moving out of won or lost clears closedAt and lostReason. Win rate = won / (won + lost) for the selected period. Pipeline value = sum of estimatedValue of open prospects (not won or lost), per currency, unweighted.
-- Convert prospect: match an existing client by lowercased email first. Create one only if none exists. Create a draft project with contractValue = estimatedValue and the prospect's currency, then link both IDs back on the prospect.
+- Convert prospect: match an existing client by lowercased email first. Create one only if none exists. Create a project of the prospect's kind, then link both IDs back on the prospect. Fixed: a draft project with contractValue = estimatedValue and the prospect's currency (unchanged). Retainer: an active retainer with the prospect's rateUnit, rate and currency, acceptedAt = start date (today), no agreement. Tasks: an active project with an empty task list. Conversion is refused if the prospect was already converted.
 - Revisions:
   - Counted revisions = revisions whose status is not "cancelled". A new request gets round = counted + 1.
   - If round <= revisionAllowance: status "requested".
@@ -117,7 +133,7 @@ Create firestore.indexes.json for every compound and collection-group query you 
   - A client can have at most 3 revisions in "awaiting_quote" or "requested" at once.
 
 ## Activity
-Every state change writes one activity entry in the same transaction. Set visibility "client" only for entries the client should see (agreement sent, signed, milestone done, payment recorded, revision status changes, change order decisions). Notes, prospect events, internal edits, and anything about follow-ups are "internal". The portal only ever loads visibility "client" for that client's projects.
+Every state change writes one activity entry in the same transaction. Set visibility "client" only for entries the client should see (agreement sent, signed, milestone done, payment recorded, revision status changes, change order decisions, and for task projects: task added, updated, done, reopened or removed). Time logged, edited or removed on a retainer is internal: the client sees the monthly summary instead. Notes, prospect events, internal edits, and anything about follow-ups are "internal". The portal only ever loads visibility "client" for that client's projects.
 
 ## Agreement and e-sign flow
 1. I create an agreement from settings.agreementTemplate merged with the project (scope, price, payment schedule, revision allowance, timeline). Store an immutable snapshot of these values.
@@ -137,19 +153,29 @@ Every state change writes one activity entry in the same transaction. Set visibi
 
 ## Pages
 Admin
-- /admin: dashboard. Cards: earned this month and earned this year (per currency), projects accepted this month and all time, active projects, pending balance across active projects (per currency), pipeline value (per currency), win rate (last 90 days). Charts: earnings per month for the last 12 months, and projects accepted per month for the last 12 months. Earnings uses one small bar chart per currency (amounts in different currencies cannot share an axis). Values are printed directly on every bar with Recharts LabelList; nothing is hidden in tooltips. A "Needs attention" list shows overdue schedule lines, follow-ups due today or earlier, and revisions waiting on me (awaiting_quote or requested).
-- /admin/prospects: table view and Kanban view (drag between stages with @dnd-kit), filters by stage and source, overdue follow-ups pinned first. Moving a prospect to lost requires a reason.
+- /admin: dashboard. Cards: earned this month and earned this year (per currency), projects accepted this month and all time, active projects, pending balance across active projects (per currency; billed but unpaid retainer months and done tasks are included, and for these two kinds also after the project is completed), recurring billed this month (retainer bill lines due in the current Manila month, in progress included, per currency), pipeline value (per currency; a retainer prospect counts its monthly value and the card says so), win rate (last 90 days). Charts: earnings per month for the last 12 months, and projects accepted per month for the last 12 months. Earnings uses one small bar chart per currency (amounts in different currencies cannot share an axis). Values are printed directly on every bar with Recharts LabelList; nothing is hidden in tooltips. A "Needs attention" list shows overdue schedule lines (and overdue retainer months and done tasks), follow-ups due today or earlier, and revisions waiting on me (awaiting_quote or requested).
+- /admin/prospects (each prospect has a kind; the new prospect form picks the kind first, a retainer prospect also takes a rate and unit and its value is monthly, shown with a "/mo" suffix; filter by kind): table view and Kanban view (drag between stages with @dnd-kit), filters by stage and source, overdue follow-ups pinned first. Moving a prospect to lost requires a reason.
 - /admin/prospects/[id]: details, notes, "Convert to client" action.
 - /admin/clients and /admin/clients/[id]: client info, invite to portal, their projects.
-- /admin/projects and /admin/projects/[id] with tabs: Overview (progress bar, milestones, status), Payments (contract value, schedule with paid, partly paid, unpaid, and overdue states, payments received list with add, edit, and delete, paid and pending totals), Agreement, Revisions, Activity.
-- /admin/settings: timezone, acceptedRule, default revision allowance, business details, agreement template editor (plain text with {{placeholders}}), Export all data (JSON and CSV), list of backups.
+- /admin/projects and /admin/projects/[id]. The list has a kind filter and a kind badge; New project starts with a kind picker. Fixed projects have the tabs Overview (progress bar, milestones, status), Payments (contract value, schedule with paid, partly paid, unpaid, and overdue states, payments received list with add, edit, and delete, paid and pending totals), Agreement, Revisions, Activity. Retainers have Overview, Time log (add / edit / delete entries, grouped by month with subtotals), Payments, Activity. Task projects have Overview, Tasks (add, edit, delete, tick done with totals for done value, still to do, owed, paid and pending), Payments, Activity. For retainer and tasks the Payments tab shows the derived bill lines instead of a schedule editor.
+- /admin/settings: timezone, acceptedRule, default revision allowance, business details, agreement template editor (plain text with {{placeholders}}), Export all data (JSON with time entries and tasks included, payments CSV, time log CSV, tasks CSV), list of backups (which include time entries and tasks).
 
 Client portal
 - /portal: list of the client's projects.
-- /portal/projects/[id]: progress, milestones, payment schedule, payments received, pending balance, agreement (view and sign), revisions (request one with notes and files, approve or decline change orders), and activity (visibility "client" only).
+- /portal/projects/[id]: for fixed projects: progress, milestones, payment schedule, payments received, pending balance, agreement (view and sign), revisions (request one with notes and files, approve or decline change orders), and activity (visibility "client" only). For retainers: a monthly summary (quantity and amount per month, paid, outstanding and status), payments, pending balance and activity. For task projects: the task list with price and status, payments, pending balance and activity. Internal notes are never shown.
 
 Public
 - /login: Google button for admin, email field for client magic link. /auth/callback completes client sign-in.
+
+## Dashboard currency view
+The dashboard has a toggle "PHP total | Original currencies" (default PHP total). The choice is the ?view= parameter and is remembered in a cookie that the server reads, so the page renders in the right mode on first paint.
+- Original currencies: exactly the per-currency view, one block or chart per currency.
+- PHP total: every money figure (earned this month and year, pending balance, recurring billed, pipeline value, weekly and monthly earnings charts, sparklines and deltas) is one PHP number or series. Counts such as accepted projects and win rate are unaffected, and the Needs attention list keeps each item's own currency. Each KPI names the original amounts it was converted from.
+- Rates (src/lib/fx/*, server only). Source order for each currency to PHP: Wise (GET https://api.wise.com/v1/rates?source={CUR}&target=PHP, header Authorization: Bearer WISE_API_TOKEN, mid-market) only when the optional env var WISE_API_TOKEN is set; then https://open.er-api.com/v6/latest/{CUR}; then https://api.frankfurter.dev/v1/latest?base={CUR}&symbols=PHP. Each request has a 4 second timeout and uses Next's fetch cache with a 1 hour revalidate. PHP to PHP is exactly 1. The token is never logged, never put in a URL and never sent to the browser. Wise's official rates endpoint needs a personal API token that only the account owner can create; without one the free public sources are used and the page says "market rates" instead of "Wise mid-market rates".
+- Rounding: amountPHP = round(minor * rate) per bucket (one currency in one period, for example USD payments in October), rounded half up after trimming float noise, then the buckets are summed. A chart's bars therefore add up to its total, and the year total is the sum of its converted months.
+- Honest limitation, stated in the UI: this is a display conversion at the CURRENT rate applied to every payment, including old ones. It is not the rate on the day each payment was received, so historical PHP totals move as rates move. Nothing converted is stored.
+- Failure: if no source can quote a needed currency the page falls back to original currencies and shows "Live rates unavailable, showing original currencies". If a source fails shortly after a good fetch, the last known rates (up to 24 hours old) are used and labelled as such. Rates never throw into the page.
+- Under the header: "Converted at Wise mid-market rates, updated 12 minutes ago" (or "market rates" for the free sources) with a popover listing each rate used (1 USD = 56.20 PHP).
 
 ## Default agreement template
 Write a plain, readable web development service agreement with these sections: Parties, Scope of Work, Timeline, Fees and Payment Schedule, Revisions (included rounds, and extra rounds billed via change order), Client Responsibilities, Intellectual Property (transfers on full payment), Confidentiality, Termination, Limitation of Liability, Electronic Signature consent, Governing Law placeholder. Use {{placeholders}} for all project-specific values. Add a comment at the top of the template file saying it is a starting draft to be reviewed before use with real clients.

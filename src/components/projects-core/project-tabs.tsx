@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { PROJECT_TABS, type ProjectTab } from "@/components/projects-core/tab-values";
+import type { ProjectTab, ProjectTabItem } from "@/components/projects-core/tab-values";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
  * The selected tab updates immediately (so the indicator slides at once) while
  * the server content for it loads; the old content dims until it arrives.
  */
-export function ProjectTabs({ value, children }: { value: ProjectTab; children: ReactNode }) {
+export function ProjectTabs({ value, tabs, children }: { value: ProjectTab; tabs: ProjectTabItem[]; children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [pending, startTransition] = useTransition();
@@ -56,7 +56,7 @@ export function ProjectTabs({ value, children }: { value: ProjectTab; children: 
     >
       <div ref={scroller} className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
         <TabsList variant="line" className="w-max min-w-full justify-start">
-          {PROJECT_TABS.map((t) => (
+          {tabs.map((t) => (
             <TabsTrigger key={t.value} value={t.value} className="flex-none px-3.5">
               {t.label}
             </TabsTrigger>

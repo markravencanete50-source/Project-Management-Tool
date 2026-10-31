@@ -159,7 +159,16 @@ function EarningsCard({ data, period, mode }: { data: CardData; period: Period; 
  * One pair of toggles drives every card: weekly or monthly, and per period or
  * running total.
  */
-export function EarningsSection({ monthly, weekly }: { monthly: EarningsSeries[]; weekly: WeeklyEarningsSeries[] }) {
+export function EarningsSection({
+  monthly,
+  weekly,
+  converted = false,
+}: {
+  monthly: EarningsSeries[];
+  weekly: WeeklyEarningsSeries[];
+  /** The series are PHP totals converted at the current rate. */
+  converted?: boolean;
+}) {
   const [period, setPeriod] = useState<Period>("weekly");
   const [mode, setMode] = useState<ChartMode>("period");
 
@@ -175,6 +184,7 @@ export function EarningsSection({ monthly, weekly }: { monthly: EarningsSeries[]
           </h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Money received per {copy.noun}, by the day it was paid in Manila. Weeks start on Monday.
+            {converted ? " Shown in PHP at today's exchange rates." : ""}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

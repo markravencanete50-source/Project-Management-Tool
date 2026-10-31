@@ -6,7 +6,7 @@ import { StaggerItem } from "@/components/dashboard/motion";
 import { Sparkline } from "@/components/dashboard/sparkline";
 import { TrendBadge } from "@/components/dashboard/trend-badge";
 import type { PeriodSummary } from "@/components/dashboard/calc";
-import { currenciesIn, type Currency, type MoneyByCurrency } from "@/lib/money";
+import { currenciesIn, formatMoney, type Currency, type MoneyByCurrency } from "@/lib/money";
 import { cn } from "cn";
 
 export type KpiTone = "primary" | "success" | "info" | "warning" | "violet";
@@ -124,6 +124,72 @@ export function MoneyKpi({
         })}
       </div>
       {hint ? <KpiHint>{hint}</KpiHint> : null}
+    </>
+  );
+}
+
+/** "From £120.00 + $1,250.00": what a converted figure is made of, in the original currencies. */
+function BreakdownHint({ original, extra }: { original: MoneyByCurrency; extra?: string }) {
+  const parts = currenciesIn(original)
+    .filter((c) => c !== "PHP")
+    .map((c) => formatMoney(original[c] ?? 0, c));
+  if (parts.length === 0 && !extra) return null;
+  return (
+    <KpiHint>
+      {parts.length > 0 ? `From ${parts.join(" + ")}` : null}
+      {parts.length > 0 && extra ? ". " : null}
+      {extra}
+    </KpiHint>
+  );
+}
+
+/**
+ * The PHP view of a money figure: one number, optionally a change badge and a
+ * sparkline, and a line naming the original amounts it was converted from.
+ */
+export function PhpKpi({
+  value,
+  original,
+  empty,
+  trend,
+  versus = "last month",
+  sparkline,
+  hint,
+}: {
+  /** PHP centavos. */
+  value: number;
+  /** The same figure in its original currencies, for the breakdown line. */
+  original: MoneyByCurrency;
+  empty: string;
+  trend?: PeriodSummary;
+  versus?: string;
+  sparkline?: number[];
+  hint?: string;
+}) {
+  if (value === 0) {
+    return (
+      <>
+        <KpiEmpty>{empty}</KpiEmpty>
+        {hint ? <KpiHint>{hint}</KpiHint> : null}
+      </>
+    );
+  }
+  return (
+    <>
+      <div className="grid gap-2">
+        <div className="flex items-baseline justify-between gap-2">
+          <AnimatedNumber kind="money" currency="PHP" value={value} className={KPI_NUMBER} fractionClassName={KPI_FRACTION} />
+          <span className="text-xs font-medium text-muted-foreground">PHP</span>
+        </div>
+        {trend ? (
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+            <TrendBadge trend={trend.trend} pct={trend.pct} versus={versus} />
+            <span className="text-xs text-muted-foreground">vs {versus}</span>
+          </div>
+        ) : null}
+        {sparkline ? <Sparkline values={sparkline} color={CURRENCY_COLOR.PHP} /> : null}
+      </div>
+      <BreakdownHint original={original} extra={hint} />
     </>
   );
 }

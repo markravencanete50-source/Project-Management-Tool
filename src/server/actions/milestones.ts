@@ -26,6 +26,7 @@ export async function saveMilestones(projectId: string, input: unknown): Promise
     await db().runTransaction(async (tx) => {
       const [projectSnap, existing] = await Promise.all([tx.get(projectRef), tx.get(col.milestones(projectId))]);
       if (!projectSnap.exists) throw new UserError("Project not found");
+      if ((projectSnap.data()?.kind ?? "fixed") !== "fixed") throw new UserError("Milestones are only used on fixed price projects");
       const existingIds = new Set(existing.docs.map((d) => d.id));
       const keptIds = new Set<string>();
       items.forEach((item, index) => {

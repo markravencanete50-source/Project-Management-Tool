@@ -14,6 +14,10 @@ import { StageBadge } from "@/components/prospects/prospects-table";
 import { isFollowUpDue, LOST_REASON_LABELS, SOURCE_LABELS } from "@/components/prospects/labels";
 import { formatInstant, formatIsoDate, todayIso } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
+import { KindBadge } from "@/components/common/kind-badge";
+import { estimatedValueLabel } from "@/lib/engagement";
+import { UNIT_LABELS } from "@/lib/billing";
+import { formatEstimate } from "@/components/prospects/labels";
 import { getConvertedLinks, getProspect, getProspectActivity } from "@/server/data/prospects";
 
 export const metadata = { title: "Prospect" };
@@ -68,6 +72,7 @@ export default async function ProspectPage({ params }: PageProps<"/admin/prospec
             </p>
             <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
               <StageBadge stage={prospect.stage} />
+              <KindBadge kind={prospect.engagementKind} />
               {prospect.archivedAt ? <Badge variant="outline">Archived</Badge> : null}
               {due ? (
                 <Badge variant="destructive" dot>
@@ -102,13 +107,23 @@ export default async function ProspectPage({ params }: PageProps<"/admin/prospec
                 <DetailItem label="Email">{prospect.email || <span className="text-muted-foreground">Not set</span>}</DetailItem>
                 <DetailItem label="Source">{SOURCE_LABELS[prospect.source]}</DetailItem>
                 <DetailItem label="Service">{prospect.service || <span className="text-muted-foreground">Not set</span>}</DetailItem>
-                <DetailItem label="Estimated value">
+                <DetailItem label="Kind of work">
+                  <KindBadge kind={prospect.engagementKind} />
+                </DetailItem>
+                <DetailItem label={estimatedValueLabel(prospect.engagementKind)}>
                   {prospect.estimatedValue ? (
-                    <span className="font-semibold tabular-nums">{formatMoney(prospect.estimatedValue, prospect.currency)}</span>
+                    <span className="font-semibold tabular-nums">{formatEstimate(prospect)}</span>
                   ) : (
                     <span className="text-muted-foreground">No estimated value yet</span>
                   )}
                 </DetailItem>
+                {prospect.engagementKind === "retainer" && prospect.rateUnit ? (
+                  <DetailItem label="Rate">
+                    <span className="font-semibold tabular-nums">
+                      {formatMoney(prospect.rate, prospect.currency)} per {UNIT_LABELS[prospect.rateUnit].singular}
+                    </span>
+                  </DetailItem>
+                ) : null}
                 <DetailItem label="Next follow-up">
                   {prospect.nextFollowUp ? formatIsoDate(prospect.nextFollowUp) : <span className="text-muted-foreground">None</span>}
                 </DetailItem>
@@ -191,7 +206,11 @@ export default async function ProspectPage({ params }: PageProps<"/admin/prospec
               <CardDescription>
                 {converted
                   ? "This prospect has already been converted."
-                  : "Create a client (or reuse one with the same email) and a draft project."}
+                  : prospect.engagementKind === "fixed"
+                    ? "Create a client (or reuse one with the same email) and a draft project."
+                    : prospect.engagementKind === "retainer"
+                      ? "Create a client (or reuse one with the same email) and an active retainer at this rate."
+                      : "Create a client (or reuse one with the same email) and an active task project."}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
@@ -234,7 +253,7 @@ export default async function ProspectPage({ params }: PageProps<"/admin/prospec
                   <p className="text-sm text-muted-foreground">Restore this prospect to convert it.</p>
                 </>
               ) : (
-                <ConvertButton id={prospect.id} name={prospect.name} />
+                <ConvertButton id={prospect.id} name={prospect.name} kind={prospect.engagementKind} />
               )}
             </CardContent>
           </Card>

@@ -14,4 +14,6 @@ export const col = {
   payments: (projectId: string) => db().collection("projects").doc(projectId).collection("payments"),
   agreements: (projectId: string) => db().collection("projects").doc(projectId).collection("agreements"),
   revisions: (projectId: string) => db().collection("projects").doc(projectId).collection("revisions"),
+  timeEntries: (projectId: string) => db().collection("projects").doc(projectId).collection("timeEntries"),
+  tasks: (projectId: string) => db().collection("projects").doc(projectId).collection("tasks"),
 };

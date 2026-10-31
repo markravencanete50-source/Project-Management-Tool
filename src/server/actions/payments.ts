@@ -5,8 +5,9 @@ import { requireAdmin } from "@/lib/auth/session";
 import { db } from "@/lib/firebase/admin";
 import { appUrl } from "@/lib/env";
 import { deleteAsset, isInFolder } from "@/lib/cloudinary";
-import { formatIsoDate } from "@/lib/dates";
-import { depositCovered, sumPayments } from "@/lib/finance";
+import { formatIsoDate, todayIso } from "@/lib/dates";
+import { financeFor } from "@/lib/billing";
+import { depositCovered } from "@/lib/finance";
 import { sendPaymentRecorded } from "@/lib/email";
 import { formatMoney } from "@/lib/money";
 import {
@@ -22,10 +23,10 @@ import {
 import { run, UserError } from "@/server/action";
 import { logActivity } from "@/server/activity";
 import { markAccepted } from "@/server/accepted";
-import { fromDoc, fromDocs } from "@/server/data/convert";
+import { fromDoc, fromDocs, projectFromDoc } from "@/server/data/convert";
 import { col } from "@/server/data/refs";
 import { getSettings } from "@/server/data/settings";
-import type { Client, Payment, Project, ScheduleLine } from "@/lib/types";
+import type { Client, Payment, ScheduleLine, Task, TimeEntry } from "@/lib/types";
 
 function checkReceipt(receiptPublicId: string | null, projectId: string) {
   if (receiptPublicId && !isInFolder(receiptPublicId, projectId, "receipts")) {
@@ -54,14 +55,17 @@ export async function addPayment(raw: AddPaymentInput) {
     const paymentRef = col.payments(input.projectId).doc();
 
     const outcome = await db().runTransaction(async (tx) => {
-      const [projectSnap, scheduleSnap, paymentsSnap] = await Promise.all([
-        tx.get(projectRef),
-        tx.get(col.schedule(input.projectId)),
-        tx.get(col.payments(input.projectId)),
-      ]);
+      const projectSnap = await tx.get(projectRef);
       if (!projectSnap.exists) throw new UserError("Project not found");
-      const project = fromDoc<Project>(projectSnap);
-      const schedule = fromDocs<ScheduleLine>(scheduleSnap);
+      const project = projectFromDoc(projectSnap);
+      // Only the data this kind of project bills from is read.
+      const [scheduleSnap, paymentsSnap, entriesSnap, tasksSnap] = await Promise.all([
+        project.kind === "fixed" ? tx.get(col.schedule(input.projectId)) : null,
+        tx.get(col.payments(input.projectId)),
+        project.kind === "retainer" ? tx.get(col.timeEntries(input.projectId)) : null,
+        project.kind === "tasks" ? tx.get(col.tasks(input.projectId)) : null,
+      ]);
+      const schedule = scheduleSnap ? fromDocs<ScheduleLine>(scheduleSnap) : [];
       const existing = fromDocs<Payment>(paymentsSnap);
 
       tx.set(paymentRef, {
@@ -76,7 +80,7 @@ export async function addPayment(raw: AddPaymentInput) {
 
       const all = [...existing, { amount: input.amount }];
       let accepted = false;
-      if (settings.acceptedRule === "deposit_paid" && depositCovered(schedule, all)) {
+      if (project.kind === "fixed" && settings.acceptedRule === "deposit_paid" && depositCovered(schedule, all)) {
         accepted = markAccepted(tx, projectRef, project, "deposit_paid", "admin");
       }
 
@@ -89,7 +93,15 @@ export async function addPayment(raw: AddPaymentInput) {
         clientId: project.clientId,
       });
 
-      return { project, accepted, pending: project.contractValue - sumPayments(all) };
+      const { pending } = financeFor({
+        project,
+        schedule,
+        entries: entriesSnap ? fromDocs<TimeEntry>(entriesSnap) : [],
+        tasks: tasksSnap ? fromDocs<Task>(tasksSnap) : [],
+        payments: all,
+        today: todayIso(),
+      });
+      return { project, accepted, pending };
     });
 
     // Email after commit. A failure here must never fail the recorded payment.
@@ -131,7 +143,7 @@ export async function updatePayment(raw: UpdatePaymentInput) {
     const previousReceipt = await db().runTransaction(async (tx) => {
       const [projectSnap, paymentSnap] = await Promise.all([tx.get(projectRef), tx.get(paymentRef)]);
       if (!projectSnap.exists || !paymentSnap.exists) throw new UserError("Payment not found");
-      const project = fromDoc<Project>(projectSnap);
+      const project = projectFromDoc(projectSnap);
       const before = fromDoc<Payment>(paymentSnap);
 
       // acceptedAt is deliberately never touched here.
@@ -168,7 +180,7 @@ export async function deletePayment(raw: DeletePaymentInput) {
     const receipt = await db().runTransaction(async (tx) => {
       const [projectSnap, paymentSnap] = await Promise.all([tx.get(projectRef), tx.get(paymentRef)]);
       if (!projectSnap.exists || !paymentSnap.exists) throw new UserError("Payment not found");
-      const project = fromDoc<Project>(projectSnap);
+      const project = projectFromDoc(projectSnap);
       const payment = fromDoc<Payment>(paymentSnap);
 
       // acceptedAt is deliberately never cleared by deleting a payment.
@@ -199,7 +211,8 @@ export async function saveSchedule(raw: SaveScheduleInput) {
     await db().runTransaction(async (tx) => {
       const [projectSnap, scheduleSnap] = await Promise.all([tx.get(projectRef), tx.get(scheduleCol)]);
       if (!projectSnap.exists) throw new UserError("Project not found");
-      const project = fromDoc<Project>(projectSnap);
+      const project = projectFromDoc(projectSnap);
+      if (project.kind !== "fixed") throw new UserError("Only fixed price projects have a stored payment schedule");
       const existingIds = new Set(scheduleSnap.docs.map((d) => d.id));
       const keptIds = new Set<string>();
 

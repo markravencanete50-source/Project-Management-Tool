@@ -6,13 +6,13 @@ import { env, appUrl } from "@/lib/env";
 import { BACKUP_FOLDER, deleteAsset, listFolder, uploadBuffer } from "@/lib/cloudinary";
 import { formatIsoDate, todayIso } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
-import { projectFinance } from "@/lib/finance";
+import { financeFor } from "@/lib/billing";
 import { REVISION_WAITING_ON_ADMIN } from "@/lib/projects";
 import { sendAdminDigest, type DigestData } from "@/lib/email";
 import { col } from "@/server/data/refs";
-import { fromDocs } from "@/server/data/convert";
+import { fromDocs, projectsFromDocs } from "@/server/data/convert";
 import { exportAll } from "@/server/export";
-import type { Client, Payment, Project, Prospect, Revision, ScheduleLine } from "@/lib/types";
+import type { Client, Payment, Prospect, Revision, ScheduleLine, Task, TimeEntry } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -51,17 +51,21 @@ async function digestStep() {
   const overdue: DigestData["overdue"] = [];
   const revisions: DigestData["revisions"] = [];
 
-  const projects = fromDocs<Project>(projectsSnap).filter((p) => !p.archivedAt);
+  const projects = projectsFromDocs(projectsSnap).filter((p) => !p.archivedAt);
   await Promise.all(
     projects.map(async (project) => {
-      const [scheduleSnap, paymentsSnap, revisionsSnap] = await Promise.all([
-        col.schedule(project.id).get(),
+      const [scheduleSnap, paymentsSnap, revisionsSnap, entriesSnap, tasksSnap] = await Promise.all([
+        project.kind === "fixed" ? col.schedule(project.id).get() : null,
         col.payments(project.id).get(),
-        col.revisions(project.id).get(),
+        project.kind === "fixed" ? col.revisions(project.id).get() : null,
+        project.kind === "retainer" ? col.timeEntries(project.id).get() : null,
+        project.kind === "tasks" ? col.tasks(project.id).get() : null,
       ]);
-      const finance = projectFinance({
-        contractValue: project.contractValue,
-        schedule: fromDocs<ScheduleLine>(scheduleSnap),
+      const finance = financeFor({
+        project,
+        schedule: scheduleSnap ? fromDocs<ScheduleLine>(scheduleSnap) : [],
+        entries: entriesSnap ? fromDocs<TimeEntry>(entriesSnap) : [],
+        tasks: tasksSnap ? fromDocs<Task>(tasksSnap) : [],
         payments: fromDocs<Payment>(paymentsSnap),
         today,
       });
@@ -76,7 +80,7 @@ async function digestStep() {
           url,
         });
       }
-      for (const revision of fromDocs<Revision>(revisionsSnap)) {
+      for (const revision of revisionsSnap ? fromDocs<Revision>(revisionsSnap) : []) {
         if (REVISION_WAITING_ON_ADMIN.includes(revision.status)) {
           revisions.push({ projectTitle: project.title, round: revision.round, status: revision.status, url });
         }

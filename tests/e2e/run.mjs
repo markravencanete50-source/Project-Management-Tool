@@ -9,7 +9,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { createServer } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { INTERNAL_NOTE, CLIENT_NOTE, IDS, PROJECT_ID, seed, sessionCookieFor } from "./seed.mjs";
+import { FX_STUB_RATES, INTERNAL_NOTE, CLIENT_NOTE, IDS, PROJECT_ID, seed, sessionCookieFor } from "./seed.mjs";
 import { runBrowser } from "./browser.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -134,6 +134,8 @@ try {
     ADMIN_EMAIL: "admin@example.com",
     APP_URL: base,
     CRON_SECRET: "e2e-cron-secret-0123456789",
+    // Fixed exchange rates: the e2e run must never depend on the network.
+    FX_STUB_RATES,
   });
   delete appEnv.RESEND_API_KEY;
 
@@ -202,21 +204,36 @@ try {
     return missing.length === 0 || `missing text: ${missing.join(" | ")}`;
   };
   const adminPages = [
-    ["/admin", ["£120.00", "$250.00", "Build milestone"]],
+    // Default view is PHP: totals are converted at the stub rates (GBP 70, USD 56) and name the original amounts.
+    ["/admin", ["£120.00", "$250.00", "Build milestone", "Recurring billed this month", "Converted at market rates", "₱"]],
+    ["/admin?view=original", ["£120.00", "$250.00", "Build milestone", "Recurring billed this month", "£100.00"]],
     ["/admin/prospects", ["Nina New", "Carl Contacted", "Lena Lost"]],
     ["/admin/prospects?view=kanban", ["Nina New", "Pia Proposal"]],
     ["/admin/prospects/pr-due", ["Carl Contacted", "Followup Inc"]],
     ["/admin/clients", ["Alice Anders", "Bob Brown"]],
     [`/admin/clients/${IDS.clientA}`, ["Alice Anders", "Acme Website Rebuild"]],
-    ["/admin/projects", ["Acme Website Rebuild", "Beta Portal Build", "Acme Draft Brochure"]],
-    ["/admin/projects/new", []],
+    ["/admin/projects", ["Acme Website Rebuild", "Beta Portal Build", "Acme Draft Brochure", "Acme Support Retainer", "Beta Task Support", "Retainer", "All kinds"]],
+    ["/admin/projects/new", ["What kind of work is this?", "Fixed", "Retainer", "Tasks"]],
+    ["/admin/projects/new?kind=retainer", ["Rate per hour", "End date (optional)"]],
+    ["/admin/projects/new?kind=tasks", ["Add priced tasks after creating the project"]],
     [`/admin/projects/${IDS.projA1}`, ["Acme Website Rebuild", "Design approved"]],
     [`/admin/projects/${IDS.projA1}?tab=overview`, ["Design approved", "Build complete"]],
     [`/admin/projects/${IDS.projA1}?tab=payments`, ["Build milestone", "Overdue", "£1,000.00"]],
     [`/admin/projects/${IDS.projA1}?tab=agreement`, ["Signed"]],
     [`/admin/projects/${IDS.projA1}?tab=revisions`, ["Add a new pricing page"]],
     [`/admin/projects/${IDS.projA1}?tab=activity`, [CLIENT_NOTE, INTERNAL_NOTE]],
-    ["/admin/settings", ["Agreement template", "Export all data"]],
+    // Retainer: 15h last month and 2h this month at 50.00 an hour, 300.00 paid.
+    [`/admin/projects/${IDS.projR1}`, ["Acme Support Retainer", "Retainer", "£50.00", "Recent time"]],
+    [`/admin/projects/${IDS.projR1}?tab=time`, ["Time entries", "Sprint work", "INTERNAL-ENTRY-NOTE", "In progress", "£100.00", "£250.00", "£500.00"]],
+    [`/admin/projects/${IDS.projR1}?tab=payments`, ["Monthly bills", "£850.00", "£550.00", "Overdue", "In progress", "£450.00"]],
+    [`/admin/projects/${IDS.projR1}?tab=activity`, []],
+    // Tasks: 550.00 done, 200.00 to do, 200.00 paid.
+    [`/admin/projects/${IDS.projT1}`, ["Beta Task Support", "Tasks done", "2 of 3", "$550.00"]],
+    [`/admin/projects/${IDS.projT1}?tab=tasks`, ["Logo design", "Landing page", "SEO audit", "Done value", "Still to do", "Owed"]],
+    [`/admin/projects/${IDS.projT1}?tab=payments`, ["Owed tasks", "Landing page", "$350.00", "Overdue"]],
+    ["/admin/prospects?kind=retainer", ["Rita Retainer", "$3,000.00/mo"]],
+    ["/admin/prospects/pr-ret", ["Rita Retainer", "Estimated monthly value", "$3,000.00/mo", "$40.00 per hour"]],
+    ["/admin/settings", ["Agreement template", "Export all data", "Time log as CSV", "Tasks as CSV"]],
   ];
   for (const [p, needles] of adminPages) {
     await check(`admin GET ${p} is 200`, async () => {
@@ -231,12 +248,20 @@ try {
     return redirected || `status ${r.status}, no redirect`;
   });
 
+  await check("retainer has no agreement or revisions tab; asking for one shows the overview", async () => {
+    const r = await get(`/admin/projects/${IDS.projR1}?tab=agreement`, cookies.admin);
+    const t = strip(r.text);
+    return (r.status === 200 && t.includes("Recent time") && !t.includes("Time entries")) || "expected the retainer overview";
+  });
+
   // ---- client A
   await check("client A GET /portal is 200 and lists their active project", async () => {
     const r = await get("/portal", cookies.a);
     if (r.status !== 200) return `status ${r.status}`;
     const t = strip(r.text);
     if (!t.includes("Acme Website Rebuild")) return "own project missing";
+    if (!t.includes("Acme Support Retainer")) return "own retainer missing";
+    if (t.includes("Beta Task Support")) return "other client's tasks project leaked";
     if (t.includes("Acme Draft Brochure")) return "draft project leaked";
     if (t.includes("Beta Portal Build")) return "other client's project leaked";
     return true;
@@ -250,6 +275,33 @@ try {
     if (!t.includes(CLIENT_NOTE)) return "client-visible activity missing";
     if (t.includes(INTERNAL_NOTE) || r.text.includes("INTERNAL-ONLY")) return "INTERNAL activity leaked";
     return true;
+  });
+  await check("client A sees the retainer monthly summary and payments, never entries or notes", async () => {
+    const r = await get(`/portal/projects/${IDS.projR1}`, cookies.a);
+    if (r.status !== 200) return `status ${r.status}`;
+    const t = strip(r.text);
+    for (const needle of ["Acme Support Retainer", "Monthly summary", "15 hours", "2 hours", "£850.00", "Payments received"]) {
+      if (!t.includes(needle)) return `missing ${needle}`;
+    }
+    if (t.includes("Sprint work") || t.includes("INTERNAL-ENTRY-NOTE") || r.text.includes("INTERNAL-ENTRY-NOTE")) return "time entry notes leaked";
+    if (t.includes("Agreement") || t.includes("Revisions")) return "agreement or revisions section shown for a retainer";
+    return true;
+  });
+  await check("client B sees the task list with prices and status, and payments", async () => {
+    const r = await get(`/portal/projects/${IDS.projT1}`, cookies.b);
+    if (r.status !== 200) return `status ${r.status}`;
+    const t = strip(r.text);
+    for (const needle of ["Beta Task Support", "Logo design", "Landing page", "SEO audit", "$150.00", "$400.00", "$200.00", "2 of 3 tasks done", "Payments received"]) {
+      if (!t.includes(needle)) return `missing ${needle}`;
+    }
+    if (t.includes("Agreement") || t.includes("Revisions") || t.includes("Milestone")) return "fixed-price sections shown for a tasks project";
+    return true;
+  });
+  await check("client A cannot open client B's tasks project, nor B the retainer", async () => {
+    const a = await get(`/portal/projects/${IDS.projT1}`, cookies.a);
+    const b = await get(`/portal/projects/${IDS.projR1}`, cookies.b);
+    if (strip(a.text).includes("Beta Task Support") || strip(b.text).includes("Acme Support Retainer")) return "cross-client data visible";
+    return (isNotFound(a) && isNotFound(b)) || `status ${a.status} / ${b.status}`;
   });
   await check("client A cannot open client B's project", async () => {
     const r = await get(`/portal/projects/${IDS.projB1}`, cookies.a);
@@ -292,7 +344,18 @@ try {
     if (r.status !== 200) return `status ${r.status}`;
     const data = JSON.parse(r.text);
     const s = JSON.stringify(data);
-    return ["Acme Website Rebuild", "Beta Portal Build", "Nina New", "Alice Anders"].every((n) => s.includes(n)) || "seed names missing from export";
+    if (!["Acme Website Rebuild", "Beta Portal Build", "Nina New", "Alice Anders"].every((n) => s.includes(n))) return "seed names missing from export";
+    const retainer = data.projects.find((p) => p.id === IDS.projR1);
+    const tasks = data.projects.find((p) => p.id === IDS.projT1);
+    if (retainer?.timeEntries?.length !== 3) return `expected 3 time entries in the export, got ${retainer?.timeEntries?.length}`;
+    if (tasks?.tasks?.length !== 3) return `expected 3 tasks in the export, got ${tasks?.tasks?.length}`;
+    return data.prospects.find((p) => p.id === "pr-ret")?.engagementKind === "retainer" || "prospect kind missing from export";
+  });
+  await check("export time and tasks CSVs list the new data", async () => {
+    const time = await get("/api/export?format=time", cookies.admin);
+    const tasks = await get("/api/export?format=tasks", cookies.admin);
+    if (time.status !== 200 || !time.text.includes("Sprint work") || !time.text.includes("500.00")) return `time csv: status ${time.status}`;
+    return (tasks.status === 200 && tasks.text.includes("Landing page") && tasks.text.includes("400.00")) || `tasks csv: status ${tasks.status}`;
   });
   await check("export csv as admin is 200", async () => {
     const r = await get("/api/export?format=csv", cookies.admin);

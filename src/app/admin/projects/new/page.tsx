@@ -6,17 +6,23 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { ProjectCreateForm } from "@/components/projects-core/project-create-form";
 import { listClientOptions } from "@/server/data/clients";
 import { getSettings } from "@/server/data/settings";
+import { PROJECT_KINDS } from "@/lib/types";
 
 export const metadata = { title: "New project" };
 
 export default async function NewProjectPage({ searchParams }: PageProps<"/admin/projects/new">) {
   const sp = await searchParams;
   const clientParam = typeof sp.clientId === "string" ? sp.clientId : null;
+  const kindParam = typeof sp.kind === "string" ? sp.kind : null;
+  const initialKind = PROJECT_KINDS.find((k) => k === kindParam) ?? "fixed";
   const [clients, settings] = await Promise.all([listClientOptions(), getSettings()]);
 
   return (
     <>
-      <PageHeader title="New project" description="Projects start as drafts until the agreement is sent." />
+      <PageHeader
+        title="New project"
+        description="Fixed price projects start as drafts until the agreement is sent. Retainers and task projects start active."
+      />
       {clients.length === 0 ? (
         <Empty className="border">
           <EmptyHeader>
@@ -34,6 +40,7 @@ export default async function NewProjectPage({ searchParams }: PageProps<"/admin
         <ProjectCreateForm
           clients={clients}
           initialClientId={clientParam}
+          initialKind={initialKind}
           defaultRevisionAllowance={settings.defaultRevisionAllowance}
         />
       )}

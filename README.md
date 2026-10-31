@@ -69,6 +69,16 @@ pnpm build
 | `RESEND_API_KEY`, `EMAIL_FROM`, `ADMIN_EMAIL` | Resend |
 | `APP_URL` | Full site URL, e.g. `https://tracker.yourdomain.com` (used in emails and Origin checks) |
 | `CRON_SECRET` | Any random string of 16+ characters |
+| `WISE_API_TOKEN` (optional) | See "Wise exchange rates" below |
+
+#### Wise exchange rates (optional)
+
+The dashboard shows money in PHP by default, converted at the current exchange rate. It works with no setup: without `WISE_API_TOKEN` it uses free public mid-market rates (open.er-api.com, then Frankfurter) and says "market rates". To use Wise's own mid-market rates instead:
+
+1. In Wise, open Settings > Integrations and tools > API tokens and create a personal token with read access. Only you can create it.
+2. Set `WISE_API_TOKEN` in `.env.local` and in Vercel. It stays on the server and is never logged or sent to the browser.
+
+If Wise rejects the token or is down, the dashboard silently falls back to the free sources. If every source fails it shows your original currencies with a notice. PHP totals are a display conversion at the current rate applied to all past payments, not the rate on the day each payment arrived.
 
 ### 5. Vercel
 
@@ -94,12 +104,13 @@ pnpm build
 
 ## Restoring from a backup
 
-Backups are full JSON exports (Settings > Backups, or Cloudinary `pmt/backups/`). There is no one-click restore in v1. To restore, write a short script with firebase-admin that reads the JSON and writes each collection back (projects include their milestones, schedule, payments, agreements and revisions as nested arrays). Test it against the emulator first.
+Backups are full JSON exports (Settings > Backups, or Cloudinary `pmt/backups/`). There is no one-click restore in v1. To restore, write a short script with firebase-admin that reads the JSON and writes each collection back (projects include their milestones, schedule, payments, agreements, revisions, time entries and tasks as nested arrays). Test it against the emulator first.
 
 ## How things work
 
 - **Auth:** admin signs in with Google and needs the `role: "admin"` custom claim. Clients get a one-time link by email (30 minutes, single use). Both end up with a 14 day httpOnly session cookie; the browser keeps no Firebase session.
-- **Money:** stored as integers in minor units (pence, cents, centavos). Currencies are never converted; totals are shown per currency.
+- **Money:** stored as integers in minor units (pence, cents, centavos). Stored amounts are never converted. The dashboard can show a PHP total (a display conversion at the current rate) or the original currencies.
+- **Engagement kinds:** every project (and prospect) is one of three kinds. Fixed price (contract value, schedule, milestones, agreement, revisions), Retainer (log hours or days at a rate; each month is billed in arrears and falls due on its last day) or Task based (priced tasks, each billed when you mark it done). Retainer and task bills are derived from time entries and done tasks on read, then settled by payments oldest first, exactly like a schedule. Existing projects are fixed.
 - **Payments:** a project has a contract value, an optional schedule of due amounts, and the payments you record. Payments settle schedule lines oldest due date first. A line is overdue when its due date has passed (Manila) and it is not fully covered. Nothing derived is stored.
 - **Agreements:** generated as PDF from the template, hashed (SHA-256), sent, signed in the portal with typed name and drawn signature, then a signature page and audit trail page are appended. Signed agreements are immutable.
 - **Daily cron:** emails a digest (follow-ups due, overdue payments, revisions waiting on you) if there is anything to report, writes a backup, and cleans up expired sign-in tokens.

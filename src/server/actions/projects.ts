@@ -6,29 +6,37 @@ import { db } from "@/lib/firebase/admin";
 import { run, UserError } from "@/server/action";
 import { col } from "@/server/data/refs";
 import { logActivity } from "@/server/activity";
-import { projectCreateSchema, projectStatusSchema, projectUpdateSchema } from "@/lib/validation/projects";
+import { newProjectFields } from "@/lib/engagement";
+import {
+  projectCreateSchema,
+  projectStatusSchema,
+  projectUpdateSchema,
+  retainerUpdateSchema,
+  tasksUpdateSchema,
+  type ProjectCreateOutput,
+} from "@/lib/validation/projects";
 import type { ActionResult } from "@/lib/types";
 
 export async function createProject(input: unknown): Promise<ActionResult<{ id: string }>> {
   return run(async () => {
     await requireAdmin();
-    const data = projectCreateSchema.parse(input);
+    const data = projectCreateSchema.parse(input) as ProjectCreateOutput;
     const ref = col.projects().doc();
     await db().runTransaction(async (tx) => {
       const clientSnap = await tx.get(col.clients().doc(data.clientId));
       if (!clientSnap.exists) throw new UserError("Client not found");
       if (clientSnap.data()?.archivedAt) throw new UserError("That client is archived");
+      // Fixed projects start as drafts. Retainers and task projects have no
+      // agreement step: they start active and are accepted on their start date.
       tx.set(ref, {
-        ...data,
-        status: "draft",
-        acceptedAt: null,
+        ...newProjectFields(data),
         archivedAt: null,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
       logActivity(tx, {
         type: "project.created",
-        message: `Project created: ${data.title}`,
+        message: `${data.kind === "fixed" ? "Project" : data.kind === "retainer" ? "Retainer" : "Task project"} created: ${data.title}`,
         actor: "admin",
         visibility: "internal",
         projectId: ref.id,
@@ -42,11 +50,18 @@ export async function createProject(input: unknown): Promise<ActionResult<{ id: 
 export async function updateProject(projectId: string, input: unknown): Promise<ActionResult> {
   return run(async () => {
     await requireAdmin();
-    const data = projectUpdateSchema.parse(input);
     const ref = col.projects().doc(projectId);
     await db().runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new UserError("Project not found");
+      // The editable fields depend on the engagement kind (missing kind is fixed).
+      const kind = (snap.data()?.kind as string | undefined) ?? "fixed";
+      const data =
+        kind === "retainer"
+          ? retainerUpdateSchema.parse(input)
+          : kind === "tasks"
+            ? tasksUpdateSchema.parse(input)
+            : projectUpdateSchema.parse(input);
       tx.update(ref, { ...data, updatedAt: FieldValue.serverTimestamp() });
       logActivity(tx, {
         type: "project.updated",

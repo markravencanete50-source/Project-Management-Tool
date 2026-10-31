@@ -14,11 +14,14 @@ import { ProspectsBoard } from "@/components/prospects/prospects-board";
 import { ProspectsTable } from "@/components/prospects/prospects-table";
 import { NewProspectDialog } from "@/components/prospects/new-prospect-dialog";
 import { SOURCE_LABELS, STAGE_LABELS, sortProspects, toItems } from "@/components/prospects/labels";
+import { KIND_SHORT } from "@/components/common/kind-badge";
+import { PROJECT_KINDS } from "@/lib/types";
 import { moveStage } from "@/server/actions/prospects";
 import { cn } from "@/lib/utils";
 import type { LostReason, Prospect, ProspectStage } from "@/lib/types";
 
 const STAGE_FILTER_ITEMS = [{ value: "all", label: "All stages" }, ...toItems(STAGE_LABELS)];
+const KIND_FILTER_ITEMS = [{ value: "all", label: "All kinds" }, ...PROJECT_KINDS.map((k) => ({ value: k, label: KIND_SHORT[k] }))];
 const SOURCE_FILTER_ITEMS = [{ value: "all", label: "All sources" }, ...toItems(SOURCE_LABELS)];
 
 type Move = { id: string; stage: ProspectStage; lostReason: LostReason | null };
@@ -91,6 +94,7 @@ export function ProspectsView({
   view,
   stage,
   source,
+  kind,
   showArchived,
   today,
   hasAny,
@@ -99,6 +103,7 @@ export function ProspectsView({
   view: "table" | "kanban";
   stage: string;
   source: string;
+  kind: string;
   showArchived: boolean;
   today: string;
   hasAny: boolean;
@@ -144,7 +149,7 @@ export function ProspectsView({
   }
 
   const sorted = sortProspects(optimistic, today);
-  const filtered = stage !== "all" || source !== "all";
+  const filtered = stage !== "all" || source !== "all" || kind !== "all";
 
   return (
     <div className="flex min-w-0 max-w-full flex-col gap-4">
@@ -165,6 +170,15 @@ export function ProspectsView({
             items={SOURCE_FILTER_ITEMS}
             onValueChange={(v) => setParam("source", v)}
           />
+          <div className="col-span-2 sm:col-span-1">
+            <LabeledSelect
+              aria-label="Filter by kind"
+              className="w-full sm:w-36"
+              value={kind}
+              items={KIND_FILTER_ITEMS}
+              onValueChange={(v) => setParam("kind", v)}
+            />
+          </div>
         </div>
         <div className="flex items-center justify-between gap-4 sm:ml-auto">
           <div className="flex items-center gap-2">
@@ -190,7 +204,7 @@ export function ProspectsView({
             <EmptyTitle>{hasAny ? "No prospects match these filters" : "No prospects yet"}</EmptyTitle>
             <EmptyDescription>
               {hasAny
-                ? "Try a different stage or source, or show archived prospects."
+                ? "Try a different stage, kind or source, or show archived prospects."
                 : "Add the first person you are talking to about work and track them through to a project."}
             </EmptyDescription>
           </EmptyHeader>
@@ -202,6 +216,7 @@ export function ProspectsView({
                   const next = new URLSearchParams(params.toString());
                   next.delete("stage");
                   next.delete("source");
+                  next.delete("kind");
                   const qs = next.toString();
                   router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
                 }}

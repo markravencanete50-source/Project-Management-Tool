@@ -3,19 +3,29 @@ import { notFound } from "next/navigation";
 import { requireAdmin, requireClient } from "@/lib/auth/session";
 import { db } from "@/lib/firebase/admin";
 import { col } from "@/server/data/refs";
-import { fromDoc, fromDocs } from "@/server/data/convert";
-import { progress, REVISION_OPEN } from "@/lib/projects";
-import type { Client, Milestone, Project, Revision } from "@/lib/types";
+import { fromDoc, fromDocs, projectFromDoc, projectsFromDocs } from "@/server/data/convert";
+import { progress, REVISION_OPEN, taskProgress } from "@/lib/projects";
+import type { Client, Milestone, Project, Revision, Task } from "@/lib/types";
 
 export type ProjectListItem = {
   project: Project;
   clientName: string;
+  /** Fixed: milestone progress. Tasks: percentage of tasks done. Retainers: 0 (not shown). */
   progress: number;
+  /** Task projects only. */
+  tasksDone: number;
+  tasksTotal: number;
 };
 
-async function progressFor(projectId: string): Promise<number> {
-  const snap = await col.milestones(projectId).get();
-  return progress(fromDocs<Milestone>(snap));
+/** Progress for one project, by kind. Fixed projects read milestones exactly as before. */
+async function progressFor(project: Project): Promise<{ progress: number; tasksDone: number; tasksTotal: number }> {
+  if (project.kind === "tasks") {
+    const tasks = fromDocs<Task>(await col.tasks(project.id).get());
+    return { progress: taskProgress(tasks), tasksDone: tasks.filter((t) => t.status === "done").length, tasksTotal: tasks.length };
+  }
+  if (project.kind === "retainer") return { progress: 0, tasksDone: 0, tasksTotal: 0 };
+  const snap = await col.milestones(project.id).get();
+  return { progress: progress(fromDocs<Milestone>(snap)), tasksDone: 0, tasksTotal: 0 };
 }
 
 /**
@@ -24,10 +34,11 @@ async function progressFor(projectId: string): Promise<number> {
  */
 export async function listProjects(): Promise<ProjectListItem[]> {
   await requireAdmin();
-  const [projectsSnap, clientsSnap, milestonesSnap] = await Promise.all([
+  const [projectsSnap, clientsSnap, milestonesSnap, tasksSnap] = await Promise.all([
     col.projects().get(),
     col.clients().get(),
     db().collectionGroup("milestones").get(),
+    db().collectionGroup("tasks").get(),
   ]);
   const names = new Map(fromDocs<Client>(clientsSnap).map((c) => [c.id, c.name]));
   const byProject = new Map<string, Milestone[]>();
@@ -38,12 +49,26 @@ export async function listProjects(): Promise<ProjectListItem[]> {
     list.push(fromDoc<Milestone>(doc));
     byProject.set(projectId, list);
   }
-  return fromDocs<Project>(projectsSnap)
-    .map((project) => ({
-      project,
-      clientName: names.get(project.clientId) ?? "Unknown client",
-      progress: progress(byProject.get(project.id) ?? []),
-    }))
+  const tasksByProject = new Map<string, Task[]>();
+  for (const doc of tasksSnap.docs) {
+    const projectId = doc.ref.parent.parent?.id;
+    if (!projectId) continue;
+    const list = tasksByProject.get(projectId) ?? [];
+    list.push(fromDoc<Task>(doc));
+    tasksByProject.set(projectId, list);
+  }
+  return projectsFromDocs(projectsSnap)
+    .map((project) => {
+      const tasks = tasksByProject.get(project.id) ?? [];
+      return {
+        project,
+        clientName: names.get(project.clientId) ?? "Unknown client",
+        progress:
+          project.kind === "tasks" ? taskProgress(tasks) : project.kind === "retainer" ? 0 : progress(byProject.get(project.id) ?? []),
+        tasksDone: tasks.filter((t) => t.status === "done").length,
+        tasksTotal: tasks.length,
+      };
+    })
     .sort((a, b) => b.project.createdAt.getTime() - a.project.createdAt.getTime());
 }
 
@@ -59,14 +84,15 @@ export async function getProjectDetail(projectId: string): Promise<ProjectDetail
   await requireAdmin();
   const snap = await col.projects().doc(projectId).get();
   if (!snap.exists) notFound();
-  const project = fromDoc<Project>(snap);
+  const project = projectFromDoc(snap);
+  const fixed = project.kind === "fixed";
   const [clientSnap, milestonesSnap, revisionsSnap] = await Promise.all([
     col.clients().doc(project.clientId).get(),
-    col.milestones(projectId).get(),
-    col.revisions(projectId).get(),
+    fixed ? col.milestones(projectId).get() : null,
+    fixed ? col.revisions(projectId).get() : null,
   ]);
-  const milestones = fromDocs<Milestone>(milestonesSnap).sort((a, b) => a.order - b.order);
-  const revisions = fromDocs<Revision>(revisionsSnap);
+  const milestones = (milestonesSnap ? fromDocs<Milestone>(milestonesSnap) : []).sort((a, b) => a.order - b.order);
+  const revisions = revisionsSnap ? fromDocs<Revision>(revisionsSnap) : [];
   return {
     project,
     client: clientSnap.exists ? fromDoc<Client>(clientSnap) : null,
@@ -76,22 +102,22 @@ export async function getProjectDetail(projectId: string): Promise<ProjectDetail
   };
 }
 
-export type ClientProjectItem = { project: Project; progress: number };
+export type ClientProjectItem = { project: Project; progress: number; tasksDone: number; tasksTotal: number };
 
 /** Admin: one client's projects, newest first. */
 export async function listClientProjects(clientId: string): Promise<ClientProjectItem[]> {
   await requireAdmin();
   const snap = await col.projects().where("clientId", "==", clientId).get();
-  const projects = fromDocs<Project>(snap).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  return Promise.all(projects.map(async (project) => ({ project, progress: await progressFor(project.id) })));
+  const projects = projectsFromDocs(snap).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  return Promise.all(projects.map(async (project) => ({ project, ...(await progressFor(project)) })));
 }
 
 /** Client: own non-draft, non-archived projects, newest first. */
 export async function listPortalProjects(): Promise<ClientProjectItem[]> {
   const session = await requireClient();
   const snap = await col.projects().where("clientId", "==", session.clientId).get();
-  const projects = fromDocs<Project>(snap)
+  const projects = projectsFromDocs(snap)
     .filter((p) => !p.archivedAt && p.status !== "draft")
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  return Promise.all(projects.map(async (project) => ({ project, progress: await progressFor(project.id) })));
+  return Promise.all(projects.map(async (project) => ({ project, ...(await progressFor(project)) })));
 }

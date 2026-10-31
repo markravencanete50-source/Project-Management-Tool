@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAction } from "@/components/common/use-action";
 import { convertProspect, setProspectArchived } from "@/server/actions/prospects";
+import type { ProjectKind } from "@/lib/types";
 
 export function ArchiveButton({ id, archived }: { id: string; archived: boolean }) {
   const { pending, execute } = useAction();
@@ -26,7 +27,7 @@ export function ArchiveButton({ id, archived }: { id: string; archived: boolean 
 }
 
 /** Opens a confirmation, converts, then goes to the new draft project. */
-export function ConvertButton({ id, name }: { id: string; name: string }) {
+export function ConvertButton({ id, name, kind = "fixed" }: { id: string; name: string; kind?: ProjectKind }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -38,7 +39,7 @@ export function ConvertButton({ id, name }: { id: string; name: string }) {
         toast.error(res.error);
         return;
       }
-      toast.success("Converted to client and draft project");
+      toast.success(kind === "fixed" ? "Converted to client and draft project" : "Converted to client and active project");
       setOpen(false);
       router.push(`/admin/projects/${res.data.projectId}`);
     });
@@ -55,8 +56,9 @@ export function ConvertButton({ id, name }: { id: string; name: string }) {
           <DialogHeader>
             <DialogTitle>Convert {name}</DialogTitle>
             <DialogDescription>
-              This links to an existing client with the same email, or creates a new one. It also creates a draft
-              project and marks the prospect as won.
+              This links to an existing client with the same email, or creates a new one. It also creates{" "}
+              {kind === "fixed" ? "a draft project" : kind === "retainer" ? "an active retainer" : "an active task project"} and
+              marks the prospect as won.
             </DialogDescription>
           </DialogHeader>
           <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
@@ -66,7 +68,11 @@ export function ConvertButton({ id, name }: { id: string; name: string }) {
             </li>
             <li className="flex items-start gap-2">
               <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
-              Draft project ready for a payment schedule and agreement
+              {kind === "fixed"
+                ? "Draft project ready for a payment schedule and agreement"
+                : kind === "retainer"
+                  ? "Active retainer with the rate, ready to log time against"
+                  : "Active task project with an empty task list"}
             </li>
             <li className="flex items-start gap-2">
               <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />

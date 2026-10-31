@@ -2,11 +2,20 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { KIND_LABELS } from "@/components/payments/labels";
 import { formatIsoDate } from "@/lib/dates";
-import type { AllocatedLine } from "@/lib/finance";
+import type { Allocation, BillLine } from "@/lib/finance";
 import { formatMoney, type Currency } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
-export function LineStateBadge({ line }: { line: Pick<AllocatedLine, "state" | "overdue"> }) {
+export function LineStateBadge({ line }: { line: Pick<Allocation, "state" | "overdue"> & Pick<BillLine, "inProgress"> }) {
+  // A retainer month that has not ended yet is billed in arrears: it is
+  // in progress, not due, until its last day has passed.
+  if (line.inProgress && line.state !== "paid" && !line.overdue) {
+    return (
+      <Badge variant="info" dot>
+        In progress
+      </Badge>
+    );
+  }
   if (line.overdue) {
     return (
       <Badge variant="destructive" dot>
@@ -51,7 +60,18 @@ function Cell({ label, children, className }: { label: string; children: ReactNo
  * Read-only schedule with allocation state. One markup for every size: stacked
  * cards below md, a Stripe-like table (scrolling inside its own container) from md up.
  */
-export function ScheduleTable({ lines, currency }: { lines: AllocatedLine[]; currency: Currency }) {
+export function ScheduleTable({
+  lines,
+  currency,
+  itemLabel = "Payment",
+  dueLabel = "Due",
+}: {
+  lines: (BillLine & Allocation)[];
+  currency: Currency;
+  /** Column heading for the first column: "Payment" for a schedule, "Month" or "Task" for derived lines. */
+  itemLabel?: string;
+  dueLabel?: string;
+}) {
   return (
     <div className="md:overflow-x-auto md:rounded-xl md:border md:bg-card md:shadow-xs">
       <div className="md:min-w-[44rem]">
@@ -62,8 +82,8 @@ export function ScheduleTable({ lines, currency }: { lines: AllocatedLine[]; cur
             COLS,
           )}
         >
-          <span>Payment</span>
-          <span>Due</span>
+          <span>{itemLabel}</span>
+          <span>{dueLabel}</span>
           <span className="text-right">Amount</span>
           <span className="text-right">Paid</span>
           <span className="text-right">Outstanding</span>
@@ -82,13 +102,17 @@ export function ScheduleTable({ lines, currency }: { lines: AllocatedLine[]; cur
               <div className="flex items-start justify-between gap-3 md:block">
                 <div className="min-w-0">
                   <div className="font-medium break-words">{line.label}</div>
-                  <div className="text-xs text-muted-foreground">{KIND_LABELS[line.kind]}</div>
+                  {line.kind ? (
+                    <div className="text-xs text-muted-foreground">{KIND_LABELS[line.kind]}</div>
+                  ) : line.detail ? (
+                    <div className="text-xs text-muted-foreground">{line.detail}</div>
+                  ) : null}
                 </div>
                 <div className="shrink-0 md:hidden">
                   <LineStateBadge line={line} />
                 </div>
               </div>
-              <Cell label="Due">{formatIsoDate(line.dueDate)}</Cell>
+              <Cell label={dueLabel}>{formatIsoDate(line.dueDate)}</Cell>
               <Cell label="Amount" className="md:text-right">
                 {formatMoney(line.amountDue, currency)}
               </Cell>

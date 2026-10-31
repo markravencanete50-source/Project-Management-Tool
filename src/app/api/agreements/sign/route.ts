@@ -19,10 +19,10 @@ import { isSameOrigin } from "@/server/auth-helpers";
 import { logActivity } from "@/server/activity";
 import { markAccepted } from "@/server/accepted";
 import { canAccessProject } from "@/server/data/access";
-import { fromDoc, fromDocs } from "@/server/data/convert";
+import { fromDoc, fromDocs, projectFromDoc } from "@/server/data/convert";
 import { col } from "@/server/data/refs";
 import { getSettings } from "@/server/data/settings";
-import type { Agreement, Client, Project } from "@/lib/types";
+import type { Agreement, Client } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     const agreementRef = col.agreements(body.projectId).doc(body.agreementId);
     const [projectSnap, agreementSnap] = await Promise.all([projectRef.get(), agreementRef.get()]);
     if (!projectSnap.exists) throw new HttpError(404, "Not found.");
-    const project = fromDoc<Project>(projectSnap);
+    const project = projectFromDoc(projectSnap);
     if (!canAccessProject(session, project) || project.clientId !== session.clientId) throw new HttpError(404, "Not found.");
     if (!agreementSnap.exists) throw new HttpError(404, "Not found.");
     const agreement = fromDoc<Agreement>(agreementSnap);
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
     await db().runTransaction(async (tx) => {
       const [freshAgreement, freshProject, freshAll] = await Promise.all([tx.get(agreementRef), tx.get(projectRef), tx.get(col.agreements(project.id))]);
       const current = fromDoc<Agreement>(freshAgreement);
-      const currentProject = fromDoc<Project>(freshProject);
+      const currentProject = projectFromDoc(freshProject);
       if (current.status !== "sent" && current.status !== "viewed") throw new HttpError(409, "This agreement is already signed or no longer open.");
       if (latestNonVoid(fromDocs<Agreement>(freshAll))?.id !== current.id) throw new HttpError(409, "A newer version of this agreement exists. Reload the page.");
       if (current.pdfHash !== body.pdfHash || current.version !== body.version) throw new HttpError(409, "The agreement changed. Reload the page.");

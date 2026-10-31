@@ -2,6 +2,7 @@ import "server-only";
 import { Timestamp } from "firebase-admin/firestore";
 import { requireAdmin } from "@/lib/auth/session";
 import { BACKUP_FOLDER, listFolder } from "@/lib/cloudinary";
+import { entryAmount, fromHundredths } from "@/lib/billing";
 import { fromMinor } from "@/lib/money";
 import { col } from "@/server/data/refs";
 
@@ -21,6 +22,8 @@ export type ExportData = {
     payments: Row[];
     agreements: Row[];
     revisions: Row[];
+    timeEntries: Row[];
+    tasks: Row[];
   })[];
   activity: Row[];
   settings: Record<string, unknown> | null;
@@ -53,12 +56,14 @@ export async function exportAll(): Promise<ExportData> {
 
   const projects = await Promise.all(
     projectsSnap.docs.map(async (doc) => {
-      const [milestones, schedule, payments, agreements, revisions] = await Promise.all([
+      const [milestones, schedule, payments, agreements, revisions, timeEntries, tasks] = await Promise.all([
         col.milestones(doc.id).get(),
         col.schedule(doc.id).get(),
         col.payments(doc.id).get(),
         col.agreements(doc.id).get(),
         col.revisions(doc.id).get(),
+        col.timeEntries(doc.id).get(),
+        col.tasks(doc.id).get(),
       ]);
       return {
         ...(iso(doc.data()) as Record<string, unknown>),
@@ -68,6 +73,8 @@ export async function exportAll(): Promise<ExportData> {
         payments: rows(payments),
         agreements: rows(agreements),
         revisions: rows(revisions),
+        timeEntries: rows(timeEntries),
+        tasks: rows(tasks),
       };
     }),
   );
@@ -106,6 +113,7 @@ export function paymentsCsv(data: ExportData): string {
     "has_receipt",
     "project_id",
     "project_title",
+    "project_kind",
     "client_id",
     "client_name",
     "recorded_at",
@@ -129,6 +137,7 @@ export function paymentsCsv(data: ExportData): string {
         payment.receiptPublicId ? "yes" : "no",
         project.id,
         project.title,
+        project.kind ?? "fixed",
         project.clientId,
         clientNames.get(String(project.clientId)) ?? "",
         payment.createdAt,
@@ -138,6 +147,79 @@ export function paymentsCsv(data: ExportData): string {
     );
   }
   return `﻿${lines.join("\r\n")}\r\n`;
+}
+
+/**
+ * Retainer time entries as one flat CSV, with the rate and each entry's value.
+ * Entry value is round(quantity * rate / 100), the same rule the app bills with.
+ */
+export function timeEntriesCsv(data: ExportData): string {
+  const clientNames = new Map(data.clients.map((c) => [c.id, String(c.name ?? "")]));
+  const header = [
+    "entry_id",
+    "date",
+    "quantity",
+    "unit",
+    "rate",
+    "rate_minor_units",
+    "amount",
+    "amount_minor_units",
+    "currency",
+    "note",
+    "project_id",
+    "project_title",
+    "client_name",
+  ];
+  const lines = [header.join(",")];
+  const entries = data.projects
+    .filter((p) => p.kind === "retainer")
+    .flatMap((project) => project.timeEntries.map((entry) => ({ project, entry })));
+  entries.sort((a, b) => String(a.entry.date ?? "").localeCompare(String(b.entry.date ?? "")));
+  for (const { project, entry } of entries) {
+    const hundredths = Number(entry.quantityHundredths ?? 0);
+    const rate = Number(project.rate ?? 0);
+    const amount = entryAmount(hundredths, rate);
+    lines.push(
+      [
+        entry.id,
+        entry.date,
+        fromHundredths(hundredths),
+        project.rateUnit ?? "",
+        fromMinor(rate),
+        rate,
+        fromMinor(amount),
+        amount,
+        project.currency,
+        entry.note,
+        project.id,
+        project.title,
+        clientNames.get(String(project.clientId)) ?? "",
+      ]
+        .map(cell)
+        .join(","),
+    );
+  }
+  return `\uFEFF${lines.join("\r\n")}\r\n`;
+}
+
+/** Priced tasks as one flat CSV. */
+export function tasksCsv(data: ExportData): string {
+  const clientNames = new Map(data.clients.map((c) => [c.id, String(c.name ?? "")]));
+  const header = ["task_id", "title", "status", "price", "price_minor_units", "currency", "done_at", "project_id", "project_title", "client_name"];
+  const lines = [header.join(",")];
+  const tasks = data.projects
+    .filter((p) => p.kind === "tasks")
+    .flatMap((project) => project.tasks.map((task) => ({ project, task })));
+  tasks.sort((a, b) => String(a.project.title).localeCompare(String(b.project.title)) || Number(a.task.order ?? 0) - Number(b.task.order ?? 0));
+  for (const { project, task } of tasks) {
+    const price = Number(task.price ?? 0);
+    lines.push(
+      [task.id, task.title, task.status, fromMinor(price), price, project.currency, task.doneAt, project.id, project.title, clientNames.get(String(project.clientId)) ?? ""]
+        .map(cell)
+        .join(","),
+    );
+  }
+  return `\uFEFF${lines.join("\r\n")}\r\n`;
 }
 
 /** Backups in Cloudinary, newest first. Admin only. */

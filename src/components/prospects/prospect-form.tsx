@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,13 +10,19 @@ import { Field, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from
 import { useAction } from "@/components/common/use-action";
 import { LabeledSelect } from "@/components/prospects/labeled-select";
 import { SOURCE_LABELS, toItems } from "@/components/prospects/labels";
+import { KindPicker } from "@/components/common/kind-picker";
+import { estimatedValueLabel } from "@/lib/engagement";
 import { CURRENCIES, fromMinor } from "@/lib/money";
 import { prospectInputSchema, type ProspectFormValues, type ProspectInput } from "@/lib/validation/prospects";
 import { createProspect, updateProspect } from "@/server/actions/prospects";
-import type { Prospect } from "@/lib/types";
+import type { Prospect, RateUnit } from "@/lib/types";
 
 const SOURCE_ITEMS = toItems(SOURCE_LABELS);
 const CURRENCY_ITEMS = CURRENCIES.map((c) => ({ value: c, label: c }));
+const UNIT_ITEMS: { value: RateUnit; label: string }[] = [
+  { value: "hour", label: "Per hour" },
+  { value: "day", label: "Per day" },
+];
 
 function defaults(p?: Prospect): ProspectFormValues {
   return {
@@ -25,8 +31,11 @@ function defaults(p?: Prospect): ProspectFormValues {
     email: p?.email ?? "",
     source: p?.source ?? "other",
     service: p?.service ?? "",
+    engagementKind: p?.engagementKind ?? "fixed",
     estimatedValue: p && p.estimatedValue ? fromMinor(p.estimatedValue) : "",
     currency: p?.currency ?? "USD",
+    rateUnit: p?.rateUnit ?? "hour",
+    rate: p && p.rate ? fromMinor(p.rate) : "",
     nextFollowUp: p?.nextFollowUp ?? "",
     notes: p?.notes ?? "",
   };
@@ -49,6 +58,9 @@ export function ProspectForm({
   });
   const { register, control, formState } = form;
   const errors = formState.errors;
+  const kind = useWatch({ control, name: "engagementKind" });
+  const unit = useWatch({ control, name: "rateUnit" });
+  const monthly = kind === "retainer";
 
   // The server parses the raw strings again; the resolver only gives instant feedback.
   const onSubmit = form.handleSubmit(() => {
@@ -84,7 +96,14 @@ export function ProspectForm({
         </Field>
       </FormSection>
 
-      <FormSection title="Opportunity" description="Where it came from and what it could be worth.">
+      <FormSection title="Opportunity" description="What kind of work it is, where it came from and what it could be worth.">
+        <Controller
+          control={control}
+          name="engagementKind"
+          render={({ field }) => (
+            <KindPicker compact value={field.value} onChange={field.onChange} idPrefix={prospect ? `p-kind-${prospect.id}` : "p-kind"} label="Kind of work" />
+          )}
+        />
         <div className="grid gap-4 sm:grid-cols-2">
           <Field>
             <FieldLabel htmlFor="p-source">Source</FieldLabel>
@@ -110,7 +129,7 @@ export function ProspectForm({
         </div>
         <div className="grid grid-cols-[1fr_6.5rem] gap-4">
           <Field data-invalid={!!errors.estimatedValue}>
-            <FieldLabel htmlFor="p-value">Estimated value</FieldLabel>
+            <FieldLabel htmlFor="p-value">{estimatedValueLabel(kind)}</FieldLabel>
             <Input
               id="p-value"
               inputMode="decimal"
@@ -120,6 +139,7 @@ export function ProspectForm({
               aria-invalid={!!errors.estimatedValue}
               {...register("estimatedValue")}
             />
+            {monthly ? <p className="text-xs text-muted-foreground">Shown as an amount per month (/mo).</p> : null}
             <FieldError errors={[errors.estimatedValue]} />
           </Field>
           <Field>
@@ -139,6 +159,33 @@ export function ProspectForm({
             />
           </Field>
         </div>
+        {monthly ? (
+          <div key="retainer-rate" className="enter-fade grid gap-4 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="p-unit">Billed</FieldLabel>
+              <Controller
+                control={control}
+                name="rateUnit"
+                render={({ field }) => (
+                  <LabeledSelect id="p-unit" className="w-full" value={field.value} onValueChange={field.onChange} items={UNIT_ITEMS} />
+                )}
+              />
+            </Field>
+            <Field data-invalid={!!errors.rate}>
+              <FieldLabel htmlFor="p-rate">Rate per {unit}</FieldLabel>
+              <Input
+                id="p-rate"
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder={unit === "hour" ? "25.00" : "180.00"}
+                className="tabular-nums"
+                aria-invalid={!!errors.rate}
+                {...register("rate")}
+              />
+              <FieldError errors={[errors.rate]} />
+            </Field>
+          </div>
+        ) : null}
       </FormSection>
 
       <FormSection title="Follow-up and notes" description="Overdue follow-ups are flagged on the list and the board.">
@@ -173,10 +220,10 @@ export function ProspectForm({
 function FormSection({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return (
     <FieldSet className="gap-4">
-      <FieldLegend variant="label" className="mb-0 font-semibold">
+      <FieldLegend variant="label" className="mb-1 font-semibold">
         {title}
       </FieldLegend>
-      <p className="-mt-2.5 text-sm text-muted-foreground">{description}</p>
+      <p className="text-sm text-muted-foreground">{description}</p>
       <FieldGroup className="gap-4">{children}</FieldGroup>
     </FieldSet>
   );

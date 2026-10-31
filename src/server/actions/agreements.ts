@@ -16,10 +16,10 @@ import { createAgreementSchema, sendAgreementSchema } from "@/lib/validation/agr
 import { logActivity } from "@/server/activity";
 import { run, UserError } from "@/server/action";
 import { issueClientLink } from "@/server/auth-helpers";
-import { fromDoc, fromDocs } from "@/server/data/convert";
+import { fromDoc, fromDocs, projectFromDoc } from "@/server/data/convert";
 import { col } from "@/server/data/refs";
 import { getSettings } from "@/server/data/settings";
-import type { ActionResult, Agreement, AgreementSnapshot, Client, Project, ScheduleLine } from "@/lib/types";
+import type { ActionResult, Agreement, AgreementSnapshot, Client, ScheduleLine } from "@/lib/types";
 
 /** Signed agreements are immutable. Every write path in this file calls this first. */
 function assertNotSigned(agreement: Pick<Agreement, "status">): void {
@@ -45,8 +45,9 @@ export async function createAgreement(projectId: string, options?: { confirmScop
 
     const projectSnap = await col.projects().doc(input.projectId).get();
     if (!projectSnap.exists) notFound();
-    const project = fromDoc<Project>(projectSnap);
+    const project = projectFromDoc(projectSnap);
     if (project.archivedAt) throw new UserError("This project is archived.");
+    if (project.kind !== "fixed") throw new UserError("Only fixed price projects have an agreement.");
     if (!project.description.trim()) throw new UserError("Add a project description (the scope of work) before creating an agreement.");
 
     const clientSnap = await col.clients().doc(project.clientId).get();
@@ -173,8 +174,9 @@ export async function sendAgreement(projectId: string, agreementId: string): Pro
     const agreementRef = col.agreements(input.projectId).doc(input.agreementId);
     const [projectSnap, agreementSnap] = await Promise.all([projectRef.get(), agreementRef.get()]);
     if (!projectSnap.exists || !agreementSnap.exists) notFound();
-    const project = fromDoc<Project>(projectSnap);
+    const project = projectFromDoc(projectSnap);
     if (project.archivedAt) throw new UserError("This project is archived.");
+    if (project.kind !== "fixed") throw new UserError("Only fixed price projects have an agreement.");
 
     const clientSnap = await col.clients().doc(project.clientId).get();
     if (!clientSnap.exists) throw new UserError("The project's client was not found.");
