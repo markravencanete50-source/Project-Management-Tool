@@ -14,10 +14,10 @@ export function NewProspectDialog() {
         <Plus data-icon="inline-start" />
         New prospect
       </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>New prospect</DialogTitle>
-          <DialogDescription>Add someone you are talking to about work.</DialogDescription>
+          <DialogDescription>Add someone you are talking to about work. You can fill in the rest later.</DialogDescription>
         </DialogHeader>
         <ProspectForm onDone={() => setOpen(false)} />
       </DialogContent>

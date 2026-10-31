@@ -10,14 +10,17 @@ export const REVISION_STATUS_LABEL: Record<RevisionStatus, string> = {
   cancelled: "Cancelled",
 };
 
-export const REVISION_STATUS_VARIANT: Record<RevisionStatus, "default" | "secondary" | "destructive" | "outline"> = {
-  awaiting_quote: "outline",
-  awaiting_approval: "outline",
+export const REVISION_STATUS_VARIANT: Record<
+  RevisionStatus,
+  "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "violet"
+> = {
+  awaiting_quote: "warning",
+  awaiting_approval: "warning",
   requested: "secondary",
-  in_progress: "default",
-  delivered: "default",
-  approved: "secondary",
-  cancelled: "outline",
+  in_progress: "info",
+  delivered: "violet",
+  approved: "success",
+  cancelled: "destructive",
 };
 
 /** Readable file name from a stored id such as "raw:pmt/projects/x/revisions/abc_report.pdf". */

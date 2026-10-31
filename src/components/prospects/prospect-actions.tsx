@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Archive, ArchiveRestore, UserCheck } from "lucide-react";
+import { Archive, ArchiveRestore, Check, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAction } from "@/components/common/use-action";
@@ -46,7 +46,7 @@ export function ConvertButton({ id, name }: { id: string; name: string }) {
 
   return (
     <>
-      <Button onClick={() => setOpen(true)}>
+      <Button className="w-full" onClick={() => setOpen(true)}>
         <UserCheck data-icon="inline-start" />
         Convert to client
       </Button>
@@ -59,6 +59,20 @@ export function ConvertButton({ id, name }: { id: string; name: string }) {
               project and marks the prospect as won.
             </DialogDescription>
           </DialogHeader>
+          <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
+            <li className="flex items-start gap-2">
+              <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
+              Client record from their details
+            </li>
+            <li className="flex items-start gap-2">
+              <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
+              Draft project ready for a payment schedule and agreement
+            </li>
+            <li className="flex items-start gap-2">
+              <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
+              Prospect marked as won
+            </li>
+          </ul>
           <DialogFooter>
             <Button variant="outline" disabled={pending} onClick={() => setOpen(false)}>
               Cancel

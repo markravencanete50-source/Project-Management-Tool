@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FilePlus2, Send } from "lucide-react";
+import { FilePlus2, Send, TriangleAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useAction } from "@/components/common/use-action";
@@ -53,7 +53,8 @@ export function AgreementActions({ projectId, sendable, hasSigned, hasAny }: Pro
       </div>
 
       {confirming ? (
-        <Alert>
+        <Alert variant="warning">
+          <TriangleAlert />
           <AlertTitle>This is a scope change</AlertTitle>
           <AlertDescription>
             <p>

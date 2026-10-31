@@ -6,7 +6,8 @@ import { LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
-export function SignOutButton({ className }: { className?: string }) {
+/** Shared sign out: clears the session cookie, then goes to the login page. */
+export function useSignOut() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
@@ -23,8 +24,14 @@ export function SignOutButton({ className }: { className?: string }) {
     }
   }
 
+  return { signOut, pending };
+}
+
+export function SignOutButton({ className, variant = "ghost" }: { className?: string; variant?: "ghost" | "outline" }) {
+  const { signOut, pending } = useSignOut();
+
   return (
-    <Button variant="ghost" className={className} onClick={signOut} disabled={pending}>
+    <Button variant={variant} className={className} onClick={signOut} disabled={pending}>
       <LogOut data-icon="inline-start" />
       Sign out
     </Button>

@@ -32,7 +32,8 @@ export function ClientActions({ clientId, archived }: { clientId: string; archiv
         </Button>
       ) : (
         <Button
-          variant="outline"
+          variant="ghost"
+          className="text-muted-foreground hover:text-destructive"
           disabled={pending}
           onClick={() => execute(() => archiveClient(clientId), { success: "Client archived" })}
         >

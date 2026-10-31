@@ -22,7 +22,7 @@ export function DeletePaymentButton({ projectId, paymentId, label }: { projectId
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm" />}>
+      <DialogTrigger render={<Button variant="outline" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" />}>
         <Trash2 data-icon="inline-start" />
         Delete
       </DialogTrigger>

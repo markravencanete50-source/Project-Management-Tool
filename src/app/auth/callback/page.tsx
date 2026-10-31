@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { CallbackClient } from "@/components/auth/callback-client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuthShell } from "@/components/auth/auth-shell";
 
 // The one-time token is in the URL: never send it on as a referrer.
 export const metadata: Metadata = { title: "Signing in", referrer: "no-referrer" };
@@ -9,15 +9,14 @@ export default async function CallbackPage({ searchParams }: PageProps<"/auth/ca
   const { token } = await searchParams;
   const value = typeof token === "string" ? token : null;
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-10">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Client sign-in</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <CallbackClient token={value} />
-        </CardContent>
-      </Card>
-    </main>
+    <AuthShell>
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight">Client sign-in</h1>
+          <p className="text-sm text-muted-foreground">One moment while we open your portal.</p>
+        </div>
+        <CallbackClient token={value} />
+      </div>
+    </AuthShell>
   );
 }

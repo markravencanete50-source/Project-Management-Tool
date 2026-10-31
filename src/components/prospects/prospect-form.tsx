@@ -1,11 +1,12 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { useAction } from "@/components/common/use-action";
 import { LabeledSelect } from "@/components/prospects/labeled-select";
 import { SOURCE_LABELS, toItems } from "@/components/prospects/labels";
@@ -62,8 +63,8 @@ export function ProspectForm({
   });
 
   return (
-    <form onSubmit={onSubmit} noValidate>
-      <FieldGroup>
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
+      <FormSection title="Contact" description="Who you are talking to. An email is needed to convert them to a client.">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field data-invalid={!!errors.name}>
             <FieldLabel htmlFor="p-name">Name</FieldLabel>
@@ -81,6 +82,9 @@ export function ProspectForm({
           <Input id="p-email" type="email" autoComplete="off" aria-invalid={!!errors.email} {...register("email")} />
           <FieldError errors={[errors.email]} />
         </Field>
+      </FormSection>
+
+      <FormSection title="Opportunity" description="Where it came from and what it could be worth.">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field>
             <FieldLabel htmlFor="p-source">Source</FieldLabel>
@@ -112,6 +116,7 @@ export function ProspectForm({
               inputMode="decimal"
               autoComplete="off"
               placeholder="1500.00"
+              className="tabular-nums"
               aria-invalid={!!errors.estimatedValue}
               {...register("estimatedValue")}
             />
@@ -134,9 +139,18 @@ export function ProspectForm({
             />
           </Field>
         </div>
+      </FormSection>
+
+      <FormSection title="Follow-up and notes" description="Overdue follow-ups are flagged on the list and the board.">
         <Field data-invalid={!!errors.nextFollowUp}>
           <FieldLabel htmlFor="p-follow">Next follow-up</FieldLabel>
-          <Input id="p-follow" type="date" aria-invalid={!!errors.nextFollowUp} {...register("nextFollowUp")} />
+          <Input
+            id="p-follow"
+            type="date"
+            className="sm:max-w-52"
+            aria-invalid={!!errors.nextFollowUp}
+            {...register("nextFollowUp")}
+          />
           <FieldError errors={[errors.nextFollowUp]} />
         </Field>
         <Field data-invalid={!!errors.notes}>
@@ -144,12 +158,26 @@ export function ProspectForm({
           <Textarea id="p-notes" rows={4} {...register("notes")} />
           <FieldError errors={[errors.notes]} />
         </Field>
-        <div className="flex justify-end">
-          <Button type="submit" disabled={pending}>
-            {pending ? "Saving..." : (submitLabel ?? (prospect ? "Save changes" : "Add prospect"))}
-          </Button>
-        </div>
-      </FieldGroup>
+      </FormSection>
+
+      <div className="flex items-center justify-end gap-3 border-t pt-4">
+        <Button type="submit" disabled={pending}>
+          {pending ? "Saving..." : (submitLabel ?? (prospect ? "Save changes" : "Add prospect"))}
+        </Button>
+      </div>
     </form>
+  );
+}
+
+/** A labelled group of fields with a short hint. */
+function FormSection({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+  return (
+    <FieldSet className="gap-4">
+      <FieldLegend variant="label" className="mb-0 font-semibold">
+        {title}
+      </FieldLegend>
+      <p className="-mt-2.5 text-sm text-muted-foreground">{description}</p>
+      <FieldGroup className="gap-4">{children}</FieldGroup>
+    </FieldSet>
   );
 }

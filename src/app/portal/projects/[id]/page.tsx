@@ -1,14 +1,16 @@
 import Link from "next/link";
-import { ArrowLeft, Check, Circle } from "lucide-react";
+import { ArrowLeft, CalendarDays, Check, Circle } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { ActivityList } from "@/components/activity/activity-list";
-import { ProgressBar } from "@/components/projects-core/progress-bar";
+import { AnimatedBar } from "@/components/motion/animated-bar";
 import { ProjectStatusBadge } from "@/components/projects-core/project-status-badge";
 import { PortalPaymentsSection } from "@/components/portal/payments-section";
 import { PortalAgreementSection } from "@/components/portal/agreement-section";
 import { PortalRevisionsSection } from "@/components/portal/revisions-section";
+import { buttonVariants } from "@/components/ui/button";
 import { formatInstant, formatIsoDate } from "@/lib/dates";
 import { progress } from "@/lib/projects";
+import { cn } from "@/lib/utils";
 import { getAccessibleProject } from "@/server/data/access";
 import { listMilestones } from "@/server/data/milestones";
 import { listProjectActivity } from "@/server/data/activity";
@@ -23,11 +25,14 @@ export default async function PortalProjectPage({ params }: PageProps<"/portal/p
     listProjectActivity(project.id, { clientOnly: true }),
   ]);
 
+  const percent = Math.round(progress(milestones));
+  const doneCount = milestones.filter((m) => m.done).length;
+
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-10">
       <div>
-        <Link href="/portal" className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-4" />
+        <Link href="/portal" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "mb-3 -ml-2")}>
+          <ArrowLeft data-icon="inline-start" />
           All projects
         </Link>
         <PageHeader
@@ -35,40 +40,66 @@ export default async function PortalProjectPage({ params }: PageProps<"/portal/p
           description={
             <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <ProjectStatusBadge status={project.status} />
-              {project.deadline ? <span>Due {formatIsoDate(project.deadline)}</span> : null}
+              {project.deadline ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <CalendarDays className="size-4" aria-hidden />
+                  Due {formatIsoDate(project.deadline)}
+                </span>
+              ) : null}
             </span>
           }
         />
-        {project.description ? <p className="-mt-3 text-sm break-words whitespace-pre-wrap text-muted-foreground">{project.description}</p> : null}
+        {project.description ? (
+          <p className="-mt-3 text-base leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">{project.description}</p>
+        ) : null}
       </div>
 
       <section className="flex flex-col gap-4" aria-labelledby="portal-progress">
-        <h2 id="portal-progress" className="text-base font-semibold">
+        <h2 id="portal-progress" className="text-xl font-semibold tracking-tight">
           Progress
         </h2>
-        <ProgressBar value={progress(milestones)} />
-        {milestones.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Milestones will be listed here once they are set up.</p>
-        ) : (
-          <ul className="flex flex-col divide-y rounded-xl bg-card ring-1 ring-foreground/10">
+        <div className="flex flex-col gap-4 rounded-xl border bg-card p-5 shadow-xs sm:p-6">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-4xl leading-none font-semibold tracking-tight tabular-nums">{percent}%</p>
+              <p className="mt-2 text-base text-muted-foreground">
+                {milestones.length === 0
+                  ? "Milestones will be listed here once they are set up."
+                  : percent === 100
+                    ? "All done. Thank you for working with us."
+                    : `${doneCount} of ${milestones.length} milestone${milestones.length === 1 ? "" : "s"} complete`}
+              </p>
+            </div>
+          </div>
+          <AnimatedBar value={percent} label="Project progress" className="h-3" />
+        </div>
+
+        {milestones.length > 0 ? (
+          <ul className="stagger flex flex-col divide-y divide-border/70 overflow-hidden rounded-xl border bg-card shadow-xs [--stagger:30ms]">
             {milestones.map((m) => (
-              <li key={m.id} className="flex items-center gap-3 px-4 py-3">
+              <li key={m.id} className="flex items-center gap-3 px-4 py-3.5">
                 {m.done ? (
-                  <Check className="size-4 shrink-0 text-primary" aria-label="Done" />
+                  <span className="grid size-6 shrink-0 place-items-center rounded-full bg-success/12 text-success">
+                    <Check className="size-3.5" aria-label="Done" />
+                  </span>
                 ) : (
-                  <Circle className="size-4 shrink-0 text-muted-foreground" aria-label="Not done" />
+                  <span className="grid size-6 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
+                    <Circle className="size-3" aria-label="Not done" />
+                  </span>
                 )}
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-sm break-words">{m.title}</span>
+                  <span className={cn("text-base break-words", m.done ? "font-medium" : "text-foreground")}>{m.title}</span>
                   {m.done && m.doneAt ? (
-                    <span className="text-xs text-muted-foreground">Completed {formatInstant(m.doneAt, "d MMM yyyy")}</span>
-                  ) : null}
+                    <span className="text-sm text-muted-foreground">Completed {formatInstant(m.doneAt, "d MMM yyyy")}</span>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">{m.done ? "Completed" : "In the works"}</span>
+                  )}
                 </div>
-                <span className="text-sm tabular-nums text-muted-foreground">{m.weight}%</span>
+                <span className="text-sm text-muted-foreground tabular-nums">{m.weight}%</span>
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
       </section>
 
       <PortalPaymentsSection projectId={project.id} />
@@ -76,9 +107,12 @@ export default async function PortalProjectPage({ params }: PageProps<"/portal/p
       <PortalRevisionsSection projectId={project.id} />
 
       <section className="flex flex-col gap-4" aria-labelledby="portal-activity">
-        <h2 id="portal-activity" className="text-base font-semibold">
-          Activity
-        </h2>
+        <div>
+          <h2 id="portal-activity" className="text-xl font-semibold tracking-tight">
+            Activity
+          </h2>
+          <p className="mt-1 text-base text-muted-foreground">Recent updates on your project.</p>
+        </div>
         <ActivityList items={activity} actorLabels={{ admin: "Team", client: "You", system: "Update" }} />
       </section>
     </div>

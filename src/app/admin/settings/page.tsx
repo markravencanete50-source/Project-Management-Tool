@@ -1,9 +1,9 @@
-import { Download } from "lucide-react";
+import { DatabaseBackup, Download, FileJson, FileSpreadsheet } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { SettingsForm } from "@/components/settings/settings-form";
+import { SettingsSection } from "@/components/settings/settings-section";
 import { BackupsList } from "@/components/settings/backups-list";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/auth/session";
 import { DEFAULT_AGREEMENT_TEMPLATE } from "@/lib/pdf/default-template";
 import { getSettings } from "@/server/data/settings";
@@ -24,7 +24,7 @@ export default async function SettingsPage() {
     <div className="mx-auto max-w-3xl">
       <PageHeader title="Settings" description="Business details, project defaults, the agreement template and your data." />
 
-      <div className="space-y-6">
+      <div className="flex flex-col gap-6">
         <SettingsForm
           initial={{
             acceptedRule: settings.acceptedRule,
@@ -36,35 +36,44 @@ export default async function SettingsPage() {
           defaultTemplate={DEFAULT_AGREEMENT_TEMPLATE}
         />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Export all data</CardTitle>
-            <CardDescription>
-              JSON holds everything: clients, prospects, projects with milestones, schedule, payments, agreements and revisions, activity and settings.
-              CSV is a single file of every payment with its project, client and currency.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Button variant="outline" render={<a href="/api/export?format=json" download />}>
-              <Download data-icon="inline-start" />
-              Download JSON
-            </Button>
-            <Button variant="outline" render={<a href="/api/export?format=csv" download />}>
-              <Download data-icon="inline-start" />
-              Download payments CSV
-            </Button>
-          </CardContent>
-        </Card>
+        <SettingsSection icon={<Download />} title="Export all data" description="Take a copy of your records whenever you need one.">
+          <ul className="divide-y overflow-hidden rounded-xl border bg-card">
+            <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <FileJson className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <p className="min-w-0 text-sm text-muted-foreground">
+                  <span className="block font-medium text-foreground">Everything as JSON</span>
+                  Clients, prospects, projects with milestones, schedule, payments, agreements and revisions, activity and settings.
+                </p>
+              </div>
+              <Button variant="outline" className="shrink-0" render={<a href="/api/export?format=json" download />}>
+                <Download data-icon="inline-start" />
+                Download JSON
+              </Button>
+            </li>
+            <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <FileSpreadsheet className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <p className="min-w-0 text-sm text-muted-foreground">
+                  <span className="block font-medium text-foreground">Payments as CSV</span>
+                  A single file of every payment with its project, client and currency.
+                </p>
+              </div>
+              <Button variant="outline" className="shrink-0" render={<a href="/api/export?format=csv" download />}>
+                <Download data-icon="inline-start" />
+                Download payments CSV
+              </Button>
+            </li>
+          </ul>
+        </SettingsSection>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Backups</CardTitle>
-            <CardDescription>A full JSON backup is saved every day at 08:00 Manila time. The latest 30 are kept.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <BackupsList backups={backups.items} failed={backups.failed} />
-          </CardContent>
-        </Card>
+        <SettingsSection
+          icon={<DatabaseBackup />}
+          title="Backups"
+          description="A full JSON backup is saved every day at 08:00 Manila time. The latest 30 are kept."
+        >
+          <BackupsList backups={backups.items} failed={backups.failed} />
+        </SettingsSection>
       </div>
     </div>
   );

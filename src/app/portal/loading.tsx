@@ -1,12 +1,12 @@
-import { Skeleton } from "@/components/ui/skeleton";
+import { CardSkeleton, PageHeaderSkeleton } from "@/components/common/skeletons";
 
 export default function Loading() {
   return (
-    <div className="flex flex-col gap-4" aria-busy="true">
-      <Skeleton className="h-8 w-48" />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-32 w-full" />
+    <div aria-busy="true">
+      <PageHeaderSkeleton />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <CardSkeleton lines={2} />
+        <CardSkeleton lines={2} />
       </div>
     </div>
   );

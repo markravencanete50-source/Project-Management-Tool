@@ -35,7 +35,7 @@ export function ClientLinkForm({ submitLabel = "Email me a sign-in link" }: { su
 
   if (sent) {
     return (
-      <Alert>
+      <Alert variant="success" className="enter-pop">
         <MailCheck />
         <AlertTitle>Check your email</AlertTitle>
         <AlertDescription>{LINK_SENT_MESSAGE} The link works once and expires in 30 minutes.</AlertDescription>

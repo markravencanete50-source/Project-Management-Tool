@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { Paperclip, X } from "lucide-react";
+import { Paperclip, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
@@ -78,13 +78,13 @@ export function RequestRevisionForm({
   }
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5" noValidate>
       {disabledReason ? (
-        <p className="rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground" role="status">
+        <p className="rounded-xl border border-warning/30 bg-warning/10 p-3.5 text-sm leading-relaxed text-foreground" role="status">
           {disabledReason}
         </p>
       ) : (
-        <p className="text-sm text-muted-foreground">{nextRoundNote}</p>
+        <p className="rounded-xl border border-info/25 bg-info/8 p-3.5 text-sm leading-relaxed text-foreground">{nextRoundNote}</p>
       )}
 
       <Field data-invalid={!!form.formState.errors.notes}>
@@ -109,13 +109,13 @@ export function RequestRevisionForm({
           multiple
           disabled={disabled || files.length >= MAX_REVISION_ATTACHMENTS}
           onChange={(e) => addFiles(e.target.files)}
-          className="block w-full text-sm file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium disabled:opacity-50"
+          className="block w-full cursor-pointer rounded-lg border border-dashed border-input bg-muted/30 p-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-input file:bg-card file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground file:shadow-xs"
         />
         <FieldDescription>Up to {MAX_REVISION_ATTACHMENTS} files, 10 MB each. Screenshots, documents or reference images.</FieldDescription>
         {files.length > 0 ? (
-          <ul className="mt-1 space-y-1">
+          <ul className="mt-1 space-y-1.5">
             {files.map((file, i) => (
-              <li key={`${file.name}-${i}`} className="flex items-center gap-2 text-sm">
+              <li key={`${file.name}-${i}`} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-sm shadow-xs">
                 <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1 truncate">{file.name}</span>
                 <Button
@@ -134,7 +134,8 @@ export function RequestRevisionForm({
         ) : null}
       </Field>
 
-      <Button type="submit" disabled={disabled}>
+      <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={disabled}>
+        <Send data-icon="inline-start" />
         {busy ? "Sending..." : "Request revision"}
       </Button>
     </form>

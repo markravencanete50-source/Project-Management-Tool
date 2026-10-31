@@ -58,8 +58,8 @@ export function ProjectCreateForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="flex max-w-2xl flex-col gap-6" noValidate>
-      <FieldGroup>
+    <form onSubmit={handleSubmit(onSubmit)} className="enter flex max-w-2xl flex-col gap-6" noValidate>
+      <FieldGroup className="gap-6 rounded-xl border bg-card p-5 shadow-xs sm:p-6">
         <Field data-invalid={Boolean(errors.clientId)}>
           <FieldLabel htmlFor="project-client">Client</FieldLabel>
           <Controller
@@ -79,6 +79,7 @@ export function ProjectCreateForm({
               />
             )}
           />
+          <FieldDescription>Every project belongs to one client. The currency follows their default.</FieldDescription>
           <FieldError errors={[errors.clientId]} />
         </Field>
 
@@ -116,6 +117,7 @@ export function ProjectCreateForm({
               aria-invalid={Boolean(errors.contractValue)}
               {...register("contractValue")}
             />
+            <FieldDescription>Payment schedule is set up afterwards in the Payments tab.</FieldDescription>
             <FieldError errors={[errors.contractValue]} />
           </Field>
         </div>
@@ -129,6 +131,7 @@ export function ProjectCreateForm({
             aria-invalid={Boolean(errors.revisionAllowance)}
             {...register("revisionAllowance")}
           />
+          <FieldDescription>Extra rounds beyond this number can be quoted as change orders.</FieldDescription>
           <FieldError errors={[errors.revisionAllowance]} />
         </Field>
 

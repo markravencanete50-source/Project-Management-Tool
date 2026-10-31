@@ -2,7 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   acceptedSeries,
   buildDashboard,
+  daysBetween,
+  earningsByWeek,
   earningsSeries,
+  lastNWeeks,
+  periodDelta,
+  summarizePeriods,
+  weekLongLabel,
+  weekStartOf,
+  weekStartOfInstant,
+  weeklyEarningsSeries,
   winRate,
   type DashboardInput,
   type DashProject,
@@ -72,6 +81,151 @@ describe("earningsSeries", () => {
   it("omits currencies whose only payments fall outside the window", () => {
     const series = earningsSeries([{ amount: 900, paidOn: "2024-01-10", currency: "USD" }], months);
     expect(series).toEqual([]);
+  });
+});
+
+describe("week boundaries (Monday start, Asia/Manila)", () => {
+  it("maps any date to the Monday of its week", () => {
+    expect(weekStartOf("2026-10-26")).toBe("2026-10-26"); // Monday
+    expect(weekStartOf("2026-10-25")).toBe("2026-10-19"); // Sunday belongs to the week before
+    expect(weekStartOf("2026-10-27")).toBe("2026-10-26");
+    expect(weekStartOf("2026-11-01")).toBe("2026-10-26"); // Sunday across a month end
+    expect(weekStartOf("2027-01-01")).toBe("2026-12-28"); // week across New Year
+    expect(weekStartOf("2024-02-29")).toBe("2024-02-26"); // leap day
+  });
+
+  it("switches week exactly at Monday 00:00 Manila, not at UTC midnight", () => {
+    // Sunday 25 Oct 23:59:59 Manila is 15:59:59Z, Monday 00:00:00 Manila is 16:00:00Z.
+    expect(weekStartOfInstant(new Date("2026-10-25T15:59:59Z"))).toBe("2026-10-19");
+    expect(weekStartOfInstant(new Date("2026-10-25T16:00:00Z"))).toBe("2026-10-26");
+    // Monday 00:00 UTC is already 08:00 Monday in Manila, the same week.
+    expect(weekStartOfInstant(new Date("2026-10-26T00:00:00Z"))).toBe("2026-10-26");
+    // Sunday 00:00 UTC is 08:00 Sunday in Manila, still the old week.
+    expect(weekStartOfInstant(new Date("2026-10-25T00:00:00Z"))).toBe("2026-10-19");
+  });
+
+  it("lists the last n weeks oldest first, ending with the current Manila week", () => {
+    const weeks = lastNWeeks(12, NOW);
+    expect(weeks).toHaveLength(12);
+    expect(weeks.at(-1)).toBe("2026-10-26");
+    expect(weeks[0]).toBe("2026-08-10");
+    expect(weeks.every((w, i) => i === 0 || daysBetween(weeks[i - 1], w) === 7)).toBe(true);
+    expect(lastNWeeks(2, new Date("2026-10-25T16:00:00Z"))).toEqual(["2026-10-19", "2026-10-26"]);
+    expect(lastNWeeks(2, new Date("2026-10-25T15:59:59Z"))).toEqual(["2026-10-12", "2026-10-19"]);
+  });
+
+  it("labels weeks, adding the year on both ends across New Year", () => {
+    expect(weekLongLabel("2026-10-19")).toBe("19 Oct to 25 Oct 2026");
+    expect(weekLongLabel("2026-12-28")).toBe("28 Dec 2026 to 3 Jan 2027");
+  });
+});
+
+describe("weekly earnings", () => {
+  const weeks = lastNWeeks(12, NOW);
+
+  it("buckets Sunday and Monday payments into different weeks, per currency", () => {
+    const byWeek = earningsByWeek([
+      { amount: 100, paidOn: "2026-10-25", currency: "GBP" }, // Sunday
+      { amount: 200, paidOn: "2026-10-26", currency: "GBP" }, // Monday
+      { amount: 50, paidOn: "2026-10-26", currency: "PHP" },
+      { amount: 7, paidOn: "2026-10-19", currency: "GBP" }, // Monday of the previous week
+    ]);
+    expect(byWeek.get("2026-10-19")).toEqual({ GBP: 107 });
+    expect(byWeek.get("2026-10-26")).toEqual({ GBP: 200, PHP: 50 });
+  });
+
+  it("zero fills empty weeks and keeps one series per currency with data in the window", () => {
+    const series = weeklyEarningsSeries(
+      [
+        { amount: 1000, paidOn: "2026-10-27", currency: "GBP" },
+        { amount: 500, paidOn: "2026-09-02", currency: "GBP" },
+        { amount: 7000, paidOn: "2026-10-05", currency: "PHP" },
+        { amount: 900, paidOn: "2025-01-10", currency: "USD" }, // outside the window
+        { amount: 123, paidOn: "2026-11-03", currency: "GBP" }, // after the current week
+      ],
+      weeks,
+    );
+    expect(series.map((s) => s.currency)).toEqual(["GBP", "PHP"]);
+    const gbp = series[0];
+    expect(gbp.points).toHaveLength(12);
+    expect(gbp.points.at(-1)).toMatchObject({ week: "2026-10-26", amount: 1000, axisLabel: "26 Oct" });
+    expect(gbp.points.find((p) => p.week === "2026-08-31")?.amount).toBe(500);
+    expect(gbp.points.filter((p) => p.amount === 0)).toHaveLength(10);
+    expect(gbp.points.at(-1)?.cumulative).toBe(1500);
+    expect(gbp.points[0].cumulative).toBe(0);
+  });
+
+  it("can force a currency in with all zeros", () => {
+    const series = weeklyEarningsSeries([], weeks, ["USD"]);
+    expect(series).toHaveLength(1);
+    expect(series[0].currency).toBe("USD");
+    expect(series[0].summary).toMatchObject({ current: 0, previous: 0, total: 0, trend: "flat", best: null });
+  });
+
+  it("buildDashboard returns the weekly series next to the monthly one, same currencies", () => {
+    const data = buildDashboard(
+      base({
+        projects: [project("a"), project("b", { currency: "PHP" })],
+        payments: [
+          { projectId: "a", amount: 10000, paidOn: "2026-10-26" },
+          { projectId: "a", amount: 4000, paidOn: "2026-10-25" },
+          { projectId: "b", amount: 500000, paidOn: "2026-03-09" }, // monthly window only
+        ],
+      }),
+    );
+    expect(data.earningsSeries.map((s) => s.currency)).toEqual(["GBP", "PHP"]);
+    expect(data.weeklyEarningsSeries.map((s) => s.currency)).toEqual(["GBP", "PHP"]);
+    const gbp = data.weeklyEarningsSeries[0];
+    expect(gbp.points.at(-1)?.amount).toBe(10000);
+    expect(gbp.points.at(-2)?.amount).toBe(4000);
+    expect(gbp.summary).toMatchObject({ current: 10000, previous: 4000, trend: "up", total: 14000 });
+    expect(data.weeklyEarningsSeries[1].summary.total).toBe(0);
+    expect(data.earningsSeries[1].summary.total).toBe(500000);
+  });
+});
+
+describe("period summaries", () => {
+  it("computes the change against the previous period", () => {
+    expect(periodDelta(150, 100)).toEqual({ pct: 0.5, trend: "up" });
+    expect(periodDelta(50, 100)).toEqual({ pct: -0.5, trend: "down" });
+    expect(periodDelta(100, 100)).toEqual({ pct: 0, trend: "flat" });
+    expect(periodDelta(0, 0)).toEqual({ pct: null, trend: "flat" });
+    expect(periodDelta(10, 0)).toEqual({ pct: null, trend: "new" });
+    expect(periodDelta(0, 10)).toEqual({ pct: -1, trend: "down" });
+  });
+
+  it("summarises totals, average and the best period", () => {
+    const s = summarizePeriods([
+      { amount: 100, longLabel: "a" },
+      { amount: 400, longLabel: "b" },
+      { amount: 0, longLabel: "c" },
+      { amount: 200, longLabel: "d" },
+    ]);
+    expect(s).toMatchObject({ current: 200, previous: 0, trend: "new", pct: null, total: 700, average: 175 });
+    expect(s.best).toEqual({ label: "b", amount: 400 });
+    expect(summarizePeriods([])).toMatchObject({ current: 0, previous: 0, total: 0, average: 0, best: null });
+  });
+
+  it("summarises accepted counts and labels months", () => {
+    const data = buildDashboard(
+      base({
+        projects: [
+          project("a", { acceptedAt: new Date("2026-10-05T00:00:00Z") }),
+          project("b", { acceptedAt: new Date("2026-10-06T00:00:00Z") }),
+          project("c", { acceptedAt: new Date("2026-09-06T00:00:00Z") }),
+        ],
+      }),
+    );
+    expect(data.acceptedSummary).toMatchObject({ current: 2, previous: 1, trend: "up", total: 3 });
+    expect(data.acceptedSeries[0].axisLabel).toBe("Nov '25");
+    expect(data.acceptedSeries.at(-1)?.axisLabel).toBe("Oct");
+    expect(data.acceptedSeries.at(-1)?.longLabel).toBe("October 2026");
+  });
+
+  it("counts whole days between calendar dates", () => {
+    expect(daysBetween("2026-10-01", "2026-10-27")).toBe(26);
+    expect(daysBetween("2026-10-27", "2026-10-20")).toBe(-7);
+    expect(daysBetween("2026-10-27", "2026-10-27")).toBe(0);
   });
 });
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Pencil, Plus } from "lucide-react";
+import { Paperclip, Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -100,7 +100,7 @@ export function PaymentFormDialog({
         {payment ? <Pencil data-icon="inline-start" /> : <Plus data-icon="inline-start" />}
         {payment ? "Edit" : "Add payment"}
       </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{payment ? "Edit payment" : "Add payment"}</DialogTitle>
           <DialogDescription>
@@ -111,34 +111,45 @@ export function PaymentFormDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 gap-4" noValidate>
           <FieldGroup>
-            <Field data-invalid={Boolean(errors.amount)}>
-              <FieldLabel htmlFor="payment-amount">Amount ({currency})</FieldLabel>
-              <Input
-                id="payment-amount"
-                inputMode="decimal"
-                placeholder="1500.00"
-                autoComplete="off"
-                aria-invalid={Boolean(errors.amount)}
-                {...register("amount", {
-                  validate: (v) => {
-                    const minor = toMinor(v);
-                    if (minor === null) return "Enter a valid amount, for example 1500.50";
-                    return minor > 0 || "Amount must be greater than zero";
-                  },
-                })}
-              />
-              <FieldError errors={[errors.amount]} />
-            </Field>
-            <Field data-invalid={Boolean(errors.paidOn)}>
-              <FieldLabel htmlFor="payment-date">Date received</FieldLabel>
-              <Input
-                id="payment-date"
-                type="date"
-                aria-invalid={Boolean(errors.paidOn)}
-                {...register("paidOn", { required: "Choose the date" })}
-              />
-              <FieldError errors={[errors.paidOn]} />
-            </Field>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field data-invalid={Boolean(errors.amount)}>
+                <FieldLabel htmlFor="payment-amount">Amount ({currency})</FieldLabel>
+                <div className="relative">
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-medium text-muted-foreground"
+                  >
+                    {currency}
+                  </span>
+                  <Input
+                    id="payment-amount"
+                    inputMode="decimal"
+                    placeholder="1500.00"
+                    autoComplete="off"
+                    className="pl-12 tabular-nums"
+                    aria-invalid={Boolean(errors.amount)}
+                    {...register("amount", {
+                      validate: (v) => {
+                        const minor = toMinor(v);
+                        if (minor === null) return "Enter a valid amount, for example 1500.50";
+                        return minor > 0 || "Amount must be greater than zero";
+                      },
+                    })}
+                  />
+                </div>
+                <FieldError errors={[errors.amount]} />
+              </Field>
+              <Field data-invalid={Boolean(errors.paidOn)}>
+                <FieldLabel htmlFor="payment-date">Date received</FieldLabel>
+                <Input
+                  id="payment-date"
+                  type="date"
+                  aria-invalid={Boolean(errors.paidOn)}
+                  {...register("paidOn", { required: "Choose the date" })}
+                />
+                <FieldError errors={[errors.paidOn]} />
+              </Field>
+            </div>
             <Field>
               <FieldLabel htmlFor="payment-method">Method</FieldLabel>
               <NativeSelect id="payment-method" {...register("method")}>
@@ -156,12 +167,13 @@ export function PaymentFormDialog({
             <Field>
               <FieldLabel htmlFor="payment-receipt">Receipt (optional)</FieldLabel>
               {hasExistingReceipt && payment?.receiptPublicId ? (
-                <div className="flex flex-wrap items-center gap-3 text-sm">
+                <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+                  <Paperclip className="size-3.5 text-muted-foreground" aria-hidden />
                   <a
                     href={fileUrl(payment.receiptPublicId)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="underline underline-offset-4"
+                    className="font-medium text-primary underline-offset-4 hover:underline"
                   >
                     Current receipt
                   </a>

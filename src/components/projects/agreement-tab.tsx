@@ -1,4 +1,4 @@
-import { FileText } from "lucide-react";
+import { Check, Circle, Download, FileText } from "lucide-react";
 import { AgreementActions } from "@/components/agreements/agreement-actions";
 import { AgreementStatusBadge } from "@/components/agreements/status-badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -17,6 +17,7 @@ function when(date: Date | null): string {
 function FileLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
     <a href={href} target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+      <Download data-icon="inline-start" />
       {children}
     </a>
   );
@@ -24,8 +25,8 @@ function FileLink({ href, children }: { href: string; children: React.ReactNode 
 
 function Detail({ label, value, mono }: { label: string; value: string | null; mono?: boolean }) {
   return (
-    <div className="min-w-0">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
+    <div className="flex min-w-0 flex-col gap-1">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className={cn("text-sm break-words", mono && "font-mono text-xs break-all")}>{value || "Not recorded"}</dd>
     </div>
   );
@@ -59,7 +60,7 @@ export async function AgreementTab({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="stagger flex flex-col gap-4">
       {current ? <CurrentAgreement agreement={current} /> : null}
 
       <Card>
@@ -82,17 +83,18 @@ export async function AgreementTab({ projectId }: { projectId: string }) {
       <Card>
         <CardHeader>
           <CardTitle>Version history</CardTitle>
+          <CardDescription>Every version of this agreement, newest first.</CardDescription>
         </CardHeader>
         <CardContent>
-          <ul className="flex flex-col divide-y">
+          <ul className="flex flex-col divide-y divide-border/70">
             {agreements.map((a) => (
-              <li key={a.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+              <li key={a.id} className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 flex-col gap-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">Version {a.version}</span>
                     <AgreementStatusBadge status={a.status} />
                   </div>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground tabular-nums">
                     Created {when(a.createdAt)}
                     {a.status === "signed" ? `, signed ${when(a.signedAt)}` : ""}
                   </span>
@@ -134,11 +136,28 @@ function CurrentAgreement({ agreement }: { agreement: Agreement }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
-        <ol className="grid gap-2 sm:grid-cols-2">
+        <ol className="grid grid-cols-1 gap-2 sm:grid-cols-4">
           {steps.map((step) => (
-            <li key={step.label} className="flex items-baseline justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
-              <span className={step.at ? "font-medium" : "text-muted-foreground"}>{step.label}</span>
-              <span className="text-xs text-muted-foreground tabular-nums">{when(step.at)}</span>
+            <li
+              key={step.label}
+              className={cn(
+                "flex items-center gap-3 rounded-xl border px-3 py-2.5 sm:flex-col sm:items-start sm:gap-2",
+                step.at ? "bg-card" : "border-dashed bg-muted/30",
+              )}
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "grid size-6 shrink-0 place-items-center rounded-full",
+                  step.at ? "bg-success/12 text-success" : "bg-muted text-muted-foreground",
+                )}
+              >
+                {step.at ? <Check className="size-3.5" /> : <Circle className="size-3" />}
+              </span>
+              <div className="flex min-w-0 flex-1 items-baseline justify-between gap-3 sm:w-full sm:flex-col sm:items-start sm:justify-start sm:gap-0.5">
+                <span className={cn("text-sm", step.at ? "font-medium" : "text-muted-foreground")}>{step.label}</span>
+                <span className="text-xs text-muted-foreground tabular-nums">{when(step.at)}</span>
+              </div>
             </li>
           ))}
         </ol>
@@ -149,7 +168,7 @@ function CurrentAgreement({ agreement }: { agreement: Agreement }) {
         </div>
 
         {agreement.status === "signed" ? (
-          <dl className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
+          <dl className="grid gap-4 rounded-xl border bg-muted/30 p-4 sm:grid-cols-2">
             <Detail label="Signer name" value={agreement.signerName} />
             <Detail label="Signer email" value={agreement.signerEmail} />
             <Detail label="IP address" value={agreement.signerIp} mono />
@@ -158,7 +177,7 @@ function CurrentAgreement({ agreement }: { agreement: Agreement }) {
             <Detail label="Signed PDF SHA-256" value={agreement.signedPdfHash} mono />
           </dl>
         ) : (
-          <dl className="grid grid-cols-1 gap-3">
+          <dl className="grid grid-cols-1 gap-3 rounded-xl border bg-muted/30 p-4">
             <Detail label="Document SHA-256" value={agreement.pdfHash} mono />
           </dl>
         )}

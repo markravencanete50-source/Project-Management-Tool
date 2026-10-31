@@ -3,12 +3,14 @@ import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
 import { ProjectsList } from "@/components/projects-core/projects-list";
+import { todayIso } from "@/lib/dates";
 import { listProjects } from "@/server/data/projects";
 
 export const metadata = { title: "Projects" };
 
 export default async function ProjectsPage() {
   const items = await listProjects();
+  const today = todayIso();
   return (
     <>
       <PageHeader
@@ -30,6 +32,11 @@ export default async function ProjectsPage() {
           progress,
           deadline: project.deadline,
           archived: Boolean(project.archivedAt),
+          overdue:
+            Boolean(project.deadline) &&
+            (project.deadline as string) < today &&
+            project.status !== "completed" &&
+            project.status !== "cancelled",
         }))}
       />
     </>

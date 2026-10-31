@@ -1,10 +1,13 @@
 import Link from "next/link";
-import { FolderKanban, Plus } from "lucide-react";
-import { PageHeader } from "@/components/common/page-header";
+import { CalendarClock, FolderKanban, Plus } from "lucide-react";
+import { InitialsAvatar } from "@/components/common/initials-avatar";
+import { DetailGrid, DetailItem } from "@/components/common/detail";
+import { SectionHeader } from "@/components/common/section-header";
+import { AnimatedBar } from "@/components/motion/animated-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { ClientActions } from "@/components/clients/client-actions";
 import { ClientFormDialog } from "@/components/clients/client-form-dialog";
 import { ProjectStatusBadge } from "@/components/projects-core/project-status-badge";
@@ -15,15 +18,6 @@ import { listClientProjects } from "@/server/data/projects";
 
 export const metadata = { title: "Client" };
 
-function Detail({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="text-sm break-words">{children}</dd>
-    </div>
-  );
-}
-
 export default async function ClientDetailPage({ params }: PageProps<"/admin/clients/[id]">) {
   const { id } = await params;
   const [client, projects] = await Promise.all([getClient(id), listClientProjects(id)]);
@@ -31,61 +25,73 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
 
   return (
     <>
-      <PageHeader
-        title={client.name}
-        description={
-          <span className="flex flex-wrap items-center gap-2">
-            {client.company || "No company"}
-            {archived ? <Badge variant="outline">Archived</Badge> : null}
-          </span>
-        }
-        actions={
-          <>
-            <ClientFormDialog
-              client={{
-                id: client.id,
-                name: client.name,
-                company: client.company,
-                email: client.email,
-                defaultCurrency: client.defaultCurrency,
-                notes: client.notes,
-              }}
-            />
-            <ClientActions clientId={client.id} archived={archived} />
-          </>
-        }
-      />
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between md:mb-8">
+        <div className="flex min-w-0 items-center gap-4">
+          <InitialsAvatar name={client.company || client.name} className="size-14 text-base" />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h1 className="text-2xl leading-tight font-semibold tracking-tight break-words sm:text-[1.75rem]">{client.name}</h1>
+              {archived ? <Badge variant="outline">Archived</Badge> : null}
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground break-words">{client.company || "No company"}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <ClientFormDialog
+            client={{
+              id: client.id,
+              name: client.name,
+              company: client.company,
+              email: client.email,
+              defaultCurrency: client.defaultCurrency,
+              notes: client.notes,
+            }}
+          />
+          <ClientActions clientId={client.id} archived={archived} />
+        </div>
+      </div>
 
-      <div className="flex flex-col gap-6">
-        <Card>
+      <div className="flex flex-col gap-8">
+        <Card className="enter">
           <CardHeader>
             <CardTitle>Details</CardTitle>
           </CardHeader>
           <CardContent>
-            <dl className="grid gap-4 sm:grid-cols-2">
-              <Detail label="Email">{client.email}</Detail>
-              <Detail label="Default currency">{client.defaultCurrency}</Detail>
-              <Detail label="Portal access">{client.authUid ? "Has signed in" : "Not signed in yet"}</Detail>
-              <Detail label="Added">{formatInstant(client.createdAt, "d MMM yyyy")}</Detail>
-              <div className="sm:col-span-2">
-                <Detail label="Notes">
-                  {client.notes ? <span className="whitespace-pre-wrap">{client.notes}</span> : <span className="text-muted-foreground">None</span>}
-                </Detail>
-              </div>
-            </dl>
+            <DetailGrid>
+              <DetailItem label="Email">{client.email}</DetailItem>
+              <DetailItem label="Default currency">{client.defaultCurrency}</DetailItem>
+              <DetailItem label="Portal access">
+                {client.authUid ? (
+                  <Badge variant="success" dot>
+                    Has signed in
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" dot>
+                    Not signed in yet
+                  </Badge>
+                )}
+              </DetailItem>
+              <DetailItem label="Added">{formatInstant(client.createdAt, "d MMM yyyy")}</DetailItem>
+              <DetailItem label="Notes" className="sm:col-span-2">
+                {client.notes ? <span className="whitespace-pre-wrap">{client.notes}</span> : <span className="text-muted-foreground">None</span>}
+              </DetailItem>
+            </DetailGrid>
           </CardContent>
         </Card>
 
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-base font-semibold">Projects</h2>
-            {archived ? null : (
-              <Button render={<Link href={`/admin/projects/new?clientId=${client.id}`} />} size="sm">
-                <Plus data-icon="inline-start" />
-                New project
-              </Button>
-            )}
-          </div>
+        <section className="flex flex-col gap-4">
+          <SectionHeader
+            title="Projects"
+            description={projects.length > 0 ? `${projects.length} ${projects.length === 1 ? "project" : "projects"} for this client.` : undefined}
+            actions={
+              archived || projects.length === 0 ? null : (
+                <Button render={<Link href={`/admin/projects/new?clientId=${client.id}`} />} size="sm">
+                  <Plus data-icon="inline-start" />
+                  New project
+                </Button>
+              )
+            }
+          />
           {projects.length === 0 ? (
             <Empty className="border">
               <EmptyHeader>
@@ -95,28 +101,45 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
                 <EmptyTitle>No projects yet</EmptyTitle>
                 <EmptyDescription>Create a project for this client to start tracking work.</EmptyDescription>
               </EmptyHeader>
+              {archived ? null : (
+                <EmptyContent>
+                  <Button render={<Link href={`/admin/projects/new?clientId=${client.id}`} />}>
+                    <Plus data-icon="inline-start" />
+                    New project
+                  </Button>
+                </EmptyContent>
+              )}
             </Empty>
           ) : (
-            <ul className="flex flex-col gap-2">
+            <ul className="stagger grid gap-3 sm:grid-cols-2">
               {projects.map(({ project, progress }) => (
-                <li key={project.id}>
-                  <Link
-                    href={`/admin/projects/${project.id}`}
-                    className="flex flex-col gap-2 rounded-xl bg-card p-4 ring-1 ring-foreground/10 transition-colors hover:bg-muted/40"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="min-w-0 truncate font-medium">{project.title}</span>
-                      <span className="flex items-center gap-2">
-                        {project.archivedAt ? <Badge variant="outline">Archived</Badge> : null}
-                        <ProjectStatusBadge status={project.status} />
-                      </span>
+                <li
+                  key={project.id}
+                  className="card-interactive relative flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <Link
+                      href={`/admin/projects/${project.id}`}
+                      className="min-w-0 font-medium break-words outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/40"
+                    >
+                      {project.title}
+                    </Link>
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                      {project.archivedAt ? <Badge variant="outline">Archived</Badge> : null}
+                      <ProjectStatusBadge status={project.status} />
                     </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      <span>{progress}% complete</span>
-                      <span>{formatMoney(project.contractValue, project.currency)}</span>
-                      {project.deadline ? <span>Due {formatIsoDate(project.deadline)}</span> : null}
-                    </div>
-                  </Link>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <AnimatedBar value={progress} label="Project progress" className="h-1.5 flex-1" />
+                    <span className="text-xs text-muted-foreground tabular-nums">{progress}%</span>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
+                    <span className="font-medium tabular-nums">{formatMoney(project.contractValue, project.currency)}</span>
+                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <CalendarClock className="size-3.5" aria-hidden="true" />
+                      {project.deadline ? `Due ${formatIsoDate(project.deadline)}` : "No deadline"}
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>

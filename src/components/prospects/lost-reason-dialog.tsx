@@ -38,7 +38,9 @@ export function LostReasonDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Mark as lost</DialogTitle>
-          <DialogDescription>Why did {name || "this prospect"} not go ahead?</DialogDescription>
+          <DialogDescription>
+            Why did {name || "this prospect"} not go ahead? The reason is kept on the record so you can spot patterns later.
+          </DialogDescription>
         </DialogHeader>
         <Field>
           <FieldLabel htmlFor="lost-reason">Reason</FieldLabel>
@@ -62,6 +64,7 @@ export function LostReasonDialog({
             Cancel
           </Button>
           <Button
+            variant="destructive"
             disabled={!reason || pending}
             onClick={() => {
               if (!reason) return;

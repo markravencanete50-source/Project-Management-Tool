@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
-import { CalendarClock, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, CircleCheck, Plus, Trash2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -100,7 +100,7 @@ export function ScheduleEditor({
         <CalendarClock data-icon="inline-start" />
         Edit schedule
       </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Contract value and payment schedule</DialogTitle>
           <DialogDescription>
@@ -115,8 +115,15 @@ export function ScheduleEditor({
 
           <div className="grid grid-cols-1 gap-3">
             {fields.map((field, index) => (
-              <div key={field.id} className="grid grid-cols-2 gap-3 rounded-lg p-3 ring-1 ring-foreground/10">
-                <Field className="col-span-2">
+              <div key={field.id} className="grid grid-cols-1 gap-3 rounded-xl border bg-muted/30 p-3 sm:grid-cols-3 sm:p-4">
+                <div className="flex items-center justify-between gap-2 sm:col-span-3">
+                  <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Line {index + 1}</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => remove(index)}>
+                    <Trash2 data-icon="inline-start" />
+                    Remove
+                  </Button>
+                </div>
+                <Field className="sm:col-span-3">
                   <FieldLabel htmlFor={`line-label-${index}`}>Label</FieldLabel>
                   <Input id={`line-label-${index}`} maxLength={120} {...register(`lines.${index}.label`)} />
                 </Field>
@@ -136,6 +143,7 @@ export function ScheduleEditor({
                     id={`line-amount-${index}`}
                     inputMode="decimal"
                     autoComplete="off"
+                    className="tabular-nums"
                     {...register(`lines.${index}.amount`)}
                   />
                 </Field>
@@ -143,12 +151,6 @@ export function ScheduleEditor({
                   <FieldLabel htmlFor={`line-date-${index}`}>Due date</FieldLabel>
                   <Input id={`line-date-${index}`} type="date" {...register(`lines.${index}.dueDate`)} />
                 </Field>
-                <div className="flex items-end justify-end">
-                  <Button type="button" variant="ghost" size="sm" onClick={() => remove(index)}>
-                    <Trash2 data-icon="inline-start" />
-                    Remove
-                  </Button>
-                </div>
               </div>
             ))}
             <Button
@@ -165,23 +167,30 @@ export function ScheduleEditor({
 
           <div
             aria-live="polite"
-            className={`rounded-lg px-3 py-2 text-sm ring-1 ${
-              canSave ? "ring-foreground/10" : "text-destructive ring-destructive/40"
+            className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm ${
+              canSave ? "border-success/25 bg-success/8 text-success" : "border-destructive/25 bg-destructive/8 text-destructive"
             }`}
           >
-            {contractMinor === null ? (
-              "Enter a valid contract value."
-            ) : !hasLines ? (
-              "No schedule lines. Nothing will be due or overdue."
-            ) : !rowsComplete ? (
-              "Every line needs a label, a due date and an amount above zero."
-            ) : difference === 0 ? (
-              `Schedule adds up to ${formatMoney(sum, currency)}.`
+            {canSave ? (
+              <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden />
             ) : (
-              `Lines total ${formatMoney(sum, currency)}. Difference: ${
-                (difference ?? 0) > 0 ? "" : "-"
-              }${formatMoney(Math.abs(difference ?? 0), currency)} ${(difference ?? 0) > 0 ? "still to allocate" : "over the contract value"}.`
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
             )}
+            <span className="tabular-nums">
+              {contractMinor === null ? (
+                "Enter a valid contract value."
+              ) : !hasLines ? (
+                "No schedule lines. Nothing will be due or overdue."
+              ) : !rowsComplete ? (
+                "Every line needs a label, a due date and an amount above zero."
+              ) : difference === 0 ? (
+                `Schedule adds up to ${formatMoney(sum, currency)}.`
+              ) : (
+                `Lines total ${formatMoney(sum, currency)}. Difference: ${
+                  (difference ?? 0) > 0 ? "" : "-"
+                }${formatMoney(Math.abs(difference ?? 0), currency)} ${(difference ?? 0) > 0 ? "still to allocate" : "over the contract value"}.`
+              )}
+            </span>
           </div>
 
           <DialogFooter>

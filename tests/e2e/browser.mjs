@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { runMatrix } from "./matrix.mjs";
 import { getFirestore } from "firebase-admin/firestore";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -27,7 +28,7 @@ export async function runBrowser({ base, cookies, ids, check }) {
   const executablePath = CHROME_CANDIDATES.find((p) => existsSync(p));
   if (!executablePath) throw new Error("System Chrome not found. Set CHROME_PATH.");
 
-  if (existsSync(SHOTS)) for (const f of readdirSync(SHOTS)) rmSync(path.join(SHOTS, f), { force: true });
+  if (existsSync(SHOTS)) for (const f of readdirSync(SHOTS, { withFileTypes: true })) if (f.isFile()) rmSync(path.join(SHOTS, f.name), { force: true });
   mkdirSync(SHOTS, { recursive: true });
 
   const browser = await chromium.launch({ executablePath, headless: true });
@@ -255,6 +256,8 @@ export async function runBrowser({ base, cookies, ids, check }) {
     });
 
     await adminCtx.close();
+
+    if (process.env.E2E_SHOTS) await runMatrix({ browser, base, cookies, ids, shots: SHOTS, host });
 
     await check("no browser console errors or page errors", () => consoleProblems.length === 0 || [...new Set(consoleProblems)].slice(0, 6).join(" || "));
   } finally {

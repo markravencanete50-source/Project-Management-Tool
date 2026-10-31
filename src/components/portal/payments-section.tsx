@@ -12,24 +12,25 @@ export async function PortalPaymentsSection({ projectId }: { projectId: string }
 
   return (
     <section className="grid grid-cols-1 gap-6" aria-labelledby="portal-payments-heading">
-      <h2 id="portal-payments-heading" className="text-lg font-semibold">
-        Payments
-      </h2>
+      <div>
+        <h2 id="portal-payments-heading" className="text-xl font-semibold tracking-tight">
+          Payments
+        </h2>
+        <p className="mt-1 text-base text-muted-foreground">What has been paid so far and what is coming up.</p>
+      </div>
       <PaymentSummary contractValue={project.contractValue} finance={finance} currency={currency} showOverdue={false} />
 
       <div className="grid grid-cols-1 gap-3">
-        <h3 className="text-base font-medium">Payment schedule</h3>
+        <h3 className="text-base font-semibold">Payment schedule</h3>
         {finance.lines.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No payment schedule has been set for this project.</p>
+          <p className="text-base text-muted-foreground">No payment schedule has been set for this project.</p>
         ) : (
-          <div className="rounded-lg ring-1 ring-foreground/10">
-            <ScheduleTable lines={finance.lines} currency={currency} />
-          </div>
+          <ScheduleTable lines={finance.lines} currency={currency} />
         )}
       </div>
 
       <div className="grid grid-cols-1 gap-3">
-        <h3 className="text-base font-medium">Payments received</h3>
+        <h3 className="text-base font-semibold">Payments received</h3>
         {payments.length === 0 ? (
           <Empty className="border">
             <EmptyHeader>

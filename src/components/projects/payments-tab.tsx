@@ -1,6 +1,7 @@
-import { TriangleAlert, Wallet } from "lucide-react";
+import { CalendarClock, TriangleAlert, Wallet } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { SectionHeader } from "@/components/common/section-header";
 import { PaymentsList } from "@/components/payments/payments-list";
 import { PaymentFormDialog } from "@/components/payments/payment-form-dialog";
 import { ScheduleEditor } from "@/components/payments/schedule-editor";
@@ -31,48 +32,46 @@ export async function PaymentsTab({ projectId }: { projectId: string }) {
         </Alert>
       ) : null}
 
-      <section className="grid grid-cols-1 gap-3" aria-labelledby="schedule-heading">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 id="schedule-heading" className="text-base font-semibold">
-            Payment schedule
-          </h2>
-          <ScheduleEditor
-            projectId={project.id}
-            currency={currency}
-            contractValue={project.contractValue}
-            lines={sortSchedule(schedule).map((l) => ({
-              id: l.id,
-              label: l.label,
-              kind: l.kind,
-              amountDue: l.amountDue,
-              dueDate: l.dueDate,
-            }))}
-          />
-        </div>
+      <section className="grid grid-cols-1 gap-3">
+        <SectionHeader
+          title="Payment schedule"
+          description="When each payment is due and how much of it has been covered."
+          actions={
+            <ScheduleEditor
+              projectId={project.id}
+              currency={currency}
+              contractValue={project.contractValue}
+              lines={sortSchedule(schedule).map((l) => ({
+                id: l.id,
+                label: l.label,
+                kind: l.kind,
+                amountDue: l.amountDue,
+                dueDate: l.dueDate,
+              }))}
+            />
+          }
+        />
         {finance.lines.length === 0 ? (
           <Empty className="border">
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <Wallet />
+                <CalendarClock />
               </EmptyMedia>
               <EmptyTitle>No payment schedule</EmptyTitle>
-              <EmptyDescription>Without a schedule there are no due dates, so nothing can be overdue.</EmptyDescription>
+              <EmptyDescription>Without a schedule there are no due dates, so nothing can be overdue. Use Edit schedule to add one.</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
-          <div className="rounded-lg ring-1 ring-foreground/10">
-            <ScheduleTable lines={finance.lines} currency={currency} />
-          </div>
+          <ScheduleTable lines={finance.lines} currency={currency} />
         )}
       </section>
 
-      <section className="grid grid-cols-1 gap-3" aria-labelledby="payments-heading">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 id="payments-heading" className="text-base font-semibold">
-            Payments received
-          </h2>
-          <PaymentFormDialog projectId={project.id} currency={currency} />
-        </div>
+      <section className="grid grid-cols-1 gap-3">
+        <SectionHeader
+          title="Payments received"
+          description="Money that has arrived. Each payment settles the earliest unpaid line."
+          actions={<PaymentFormDialog projectId={project.id} currency={currency} />}
+        />
         {payments.length === 0 ? (
           <Empty className="border">
             <EmptyHeader>

@@ -20,6 +20,9 @@ const projectIdOf = (ref: DocumentReference) => ref.parent.parent!.id;
 /**
  * Everything the dashboard shows, computed on read. Uses unfiltered
  * collection-group scans of payments, schedule and revisions (no index needed).
+ * The result carries both earnings views: `earningsSeries` (last 12 months) and
+ * `weeklyEarningsSeries` (last 12 Monday-start weeks), each bucketed in Asia/Manila
+ * by the payment's paidOn date, one series per currency.
  */
 export async function getDashboardData(): Promise<DashboardData> {
   await requireAdmin();

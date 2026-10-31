@@ -48,3 +48,28 @@ export function sortProspects<T extends { nextFollowUp: string | null; stage: Pr
     return b.createdAt.getTime() - a.createdAt.getTime();
   });
 }
+
+/** Badge colour per stage: new neutral, contacted info, proposal violet, negotiating warning, won success, lost destructive. */
+export const STAGE_VARIANT: Record<ProspectStage, "secondary" | "info" | "violet" | "warning" | "success" | "destructive"> = {
+  new: "secondary",
+  contacted: "info",
+  proposal_sent: "violet",
+  negotiating: "warning",
+  won: "success",
+  lost: "destructive",
+};
+
+/** Solid dot colour per stage, used on board column headers. */
+export const STAGE_DOT: Record<ProspectStage, string> = {
+  new: "bg-muted-foreground",
+  contacted: "bg-info",
+  proposal_sent: "bg-violet",
+  negotiating: "bg-warning",
+  won: "bg-success",
+  lost: "bg-destructive",
+};
+
+/** One short line combining company and service, or an empty string. */
+export function companyLine(p: { company: string; service: string }): string {
+  return [p.company, p.service].filter(Boolean).join(", ");
+}

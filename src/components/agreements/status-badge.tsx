@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { AnimatedBadge } from "@/components/motion/animated-badge";
 import type { AgreementStatus } from "@/lib/types";
 
 const LABEL: Record<AgreementStatus, string> = {
@@ -9,14 +10,20 @@ const LABEL: Record<AgreementStatus, string> = {
   void: "Void",
 };
 
-const VARIANT: Record<AgreementStatus, "default" | "secondary" | "outline" | "destructive"> = {
+const VARIANT: Record<AgreementStatus, "outline" | "info" | "violet" | "success" | "destructive"> = {
   draft: "outline",
-  sent: "secondary",
-  viewed: "secondary",
-  signed: "default",
-  void: "outline",
+  sent: "info",
+  viewed: "violet",
+  signed: "success",
+  void: "destructive",
 };
 
 export function AgreementStatusBadge({ status }: { status: AgreementStatus }) {
-  return <Badge variant={VARIANT[status]}>{LABEL[status]}</Badge>;
+  return (
+    <AnimatedBadge k={status}>
+      <Badge variant={VARIANT[status]} dot>
+        {LABEL[status]}
+      </Badge>
+    </AnimatedBadge>
+  );
 }

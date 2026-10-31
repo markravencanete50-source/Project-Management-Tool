@@ -1,6 +1,7 @@
 // Pure dashboard aggregation. No server imports, so it can be unit tested and
 // reused anywhere. Everything is computed on read from source documents.
-import { formatMonthKey, lastNMonths, monthKeyOfInstant, todayIso, type IsoDate, type MonthKey } from "@/lib/dates";
+import { formatInTimeZone } from "date-fns-tz";
+import { addDaysIso, formatMonthKey, lastNMonths, monthKeyOfInstant, todayIso, type IsoDate, type MonthKey } from "@/lib/dates";
 import { earningsByMonth, projectFinance } from "@/lib/finance";
 import { addMoney, CURRENCIES, type Currency, type MoneyByCurrency } from "@/lib/money";
 import { REVISION_WAITING_ON_ADMIN } from "@/lib/projects";
@@ -8,6 +9,7 @@ import type { Project, ProjectStatus, Prospect, RevisionStatus, ScheduleLine } f
 
 export const WIN_RATE_DAYS = 90;
 export const CHART_MONTHS = 12;
+export const CHART_WEEKS = 12;
 
 export type DashProject = Pick<
   Project,
@@ -32,9 +34,36 @@ export type DashboardInput = {
   now?: Date;
 };
 
-export type EarningsPoint = { month: MonthKey; label: string; amount: number };
-export type EarningsSeries = { currency: Currency; points: EarningsPoint[] };
-export type AcceptedPoint = { month: MonthKey; label: string; count: number };
+/** Week buckets are keyed by their Monday (a Manila calendar date). */
+export type WeekKey = IsoDate;
+
+export type Trend = "up" | "down" | "flat" | "new";
+/** Current period against the one before it, plus window totals. Amounts are minor units (or counts). */
+export type PeriodSummary = {
+  current: number;
+  previous: number;
+  /** Fractional change (0.12 is +12%). Null when there is no previous value to compare with. */
+  pct: number | null;
+  trend: Trend;
+  total: number;
+  average: number;
+  best: { label: string; amount: number } | null;
+};
+
+type PointLabels = {
+  /** Compact label, same as axisLabel for weeks. */
+  label: string;
+  /** Label for the chart axis. */
+  axisLabel: string;
+  /** Full label for tooltips and screen readers. */
+  longLabel: string;
+};
+
+export type EarningsPoint = PointLabels & { month: MonthKey; amount: number; cumulative: number };
+export type EarningsSeries = { currency: Currency; points: EarningsPoint[]; summary: PeriodSummary };
+export type WeeklyEarningsPoint = PointLabels & { week: WeekKey; amount: number; cumulative: number };
+export type WeeklyEarningsSeries = { currency: Currency; points: WeeklyEarningsPoint[]; summary: PeriodSummary };
+export type AcceptedPoint = PointLabels & { month: MonthKey; count: number };
 
 export type OverdueItem = {
   lineId: string;
@@ -66,8 +95,12 @@ export type DashboardData = {
   pendingBalance: MoneyByCurrency;
   pipelineValue: MoneyByCurrency;
   winRate: { won: number; lost: number; rate: number | null };
+  /** Last 12 months per currency, oldest first. */
   earningsSeries: EarningsSeries[];
+  /** Last 12 weeks (Monday start, Asia/Manila) for the same currencies, oldest first. */
+  weeklyEarningsSeries: WeeklyEarningsSeries[];
   acceptedSeries: AcceptedPoint[];
+  acceptedSummary: PeriodSummary;
   attention: { overdue: OverdueItem[]; followUps: FollowUpItem[]; revisions: RevisionItem[] };
 };
 
@@ -79,20 +112,154 @@ export function monthLabel(month: MonthKey): string {
   return formatMonthKey(month, "MMM yy");
 }
 
-/** Earnings per month for a window, one series per currency that has any payment in it. */
+/** "Oct" for most months, "Jan '27" for January and for the first bucket so the year is never lost. */
+function monthAxisLabel(month: MonthKey, index: number): string {
+  const short = formatMonthKey(month, "MMM");
+  return month.endsWith("-01") || index === 0 ? `${short} '${month.slice(2, 4)}` : short;
+}
+
+// ---------------------------------------------------------------- weeks
+
+/**
+ * The Monday of the week containing a Manila calendar date. A payment's paidOn
+ * is already a Manila date, so a payment dated Sunday belongs to the week that
+ * ends that day and one dated Monday starts the next.
+ */
+export function weekStartOf(date: IsoDate): WeekKey {
+  const dow = new Date(`${date}T00:00:00Z`).getUTCDay(); // 0 is Sunday
+  return addDaysIso(date, -((dow + 6) % 7));
+}
+
+/** Monday of the Manila week an instant falls in (Sunday 23:59 is the old week, Monday 00:00 the new one). */
+export function weekStartOfInstant(instant: Date): WeekKey {
+  return weekStartOf(todayIso(instant));
+}
+
+/** The last n week keys ending with the current Manila week, oldest first. */
+export function lastNWeeks(n: number, now: Date = new Date()): WeekKey[] {
+  const current = weekStartOfInstant(now);
+  return Array.from({ length: n }, (_, i) => addDaysIso(current, -7 * (n - 1 - i)));
+}
+
+/** Payments grouped by the Monday of their paidOn week, per currency. Same rule as earningsByMonth. */
+export function earningsByWeek(
+  payments: { amount: number; paidOn: IsoDate; currency: Currency }[],
+): Map<WeekKey, MoneyByCurrency> {
+  const out = new Map<WeekKey, MoneyByCurrency>();
+  for (const p of payments) {
+    const key = weekStartOf(p.paidOn);
+    addMoney(out.get(key) ?? out.set(key, {}).get(key)!, p.currency, p.amount);
+  }
+  return out;
+}
+
+function fmtDay(date: IsoDate, pattern: string): string {
+  return formatInTimeZone(new Date(`${date}T12:00:00Z`), "UTC", pattern);
+}
+
+export function weekAxisLabel(week: WeekKey): string {
+  return fmtDay(week, "d MMM");
+}
+
+/** "19 Oct to 25 Oct 2026", with the year on both ends when the week crosses New Year. */
+export function weekLongLabel(week: WeekKey): string {
+  const end = addDaysIso(week, 6);
+  return week.slice(0, 4) === end.slice(0, 4)
+    ? `${fmtDay(week, "d MMM")} to ${fmtDay(end, "d MMM yyyy")}`
+    : `${fmtDay(week, "d MMM yyyy")} to ${fmtDay(end, "d MMM yyyy")}`;
+}
+
+/** Whole days from one calendar date to another (positive when `to` is later). */
+export function daysBetween(from: IsoDate, to: IsoDate): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+// ------------------------------------------------------------- summaries
+
+/** Change from `previous` to `current`. A jump from nothing is "new" rather than an infinite percentage. */
+export function periodDelta(current: number, previous: number): { pct: number | null; trend: Trend } {
+  if (previous === 0) return current === 0 ? { pct: null, trend: "flat" } : { pct: null, trend: "new" };
+  const pct = (current - previous) / previous;
+  if (Math.round(pct * 1000) === 0) return { pct, trend: "flat" };
+  return { pct, trend: pct > 0 ? "up" : "down" };
+}
+
+/**
+ * Totals for a window of periods, oldest first. The last point is the current
+ * (usually still partial) period and the one before it is what it is compared with.
+ */
+export function summarizePeriods(points: { amount: number; longLabel: string }[]): PeriodSummary {
+  const current = points.at(-1)?.amount ?? 0;
+  const previous = points.length > 1 ? points[points.length - 2].amount : 0;
+  const total = points.reduce((sum, p) => sum + p.amount, 0);
+  let best: PeriodSummary["best"] = null;
+  for (const p of points) {
+    if (p.amount > 0 && (best === null || p.amount >= best.amount)) best = { label: p.longLabel, amount: p.amount };
+  }
+  return {
+    current,
+    previous,
+    ...periodDelta(current, previous),
+    total,
+    average: points.length ? total / points.length : 0,
+    best,
+  };
+}
+
+function runningTotals(amounts: number[]): number[] {
+  let sum = 0;
+  return amounts.map((a) => (sum += a));
+}
+
+/**
+ * Earnings per month for a window, one series per currency that has any payment in it.
+ * `include` forces currencies in (zero filled) so two views of the same data show the same cards.
+ */
 export function earningsSeries(
   payments: { amount: number; paidOn: IsoDate; currency: Currency }[],
   months: MonthKey[],
+  include: Currency[] = [],
 ): EarningsSeries[] {
   const byMonth = earningsByMonth(payments);
   const out: EarningsSeries[] = [];
   for (const currency of CURRENCIES) {
-    const points = months.map((month) => ({
+    const amounts = months.map((month) => byMonth.get(month)?.[currency] ?? 0);
+    if (!amounts.some((a) => a !== 0) && !include.includes(currency)) continue;
+    const cumulative = runningTotals(amounts);
+    const points = months.map((month, i) => ({
       month,
       label: monthLabel(month),
-      amount: byMonth.get(month)?.[currency] ?? 0,
+      axisLabel: monthAxisLabel(month, i),
+      longLabel: formatMonthKey(month, "MMMM yyyy"),
+      amount: amounts[i],
+      cumulative: cumulative[i],
     }));
-    if (points.some((p) => p.amount !== 0)) out.push({ currency, points });
+    out.push({ currency, points, summary: summarizePeriods(points) });
+  }
+  return out;
+}
+
+/** Earnings per Manila week (Monday start) for a window, one series per currency, zero filled. */
+export function weeklyEarningsSeries(
+  payments: { amount: number; paidOn: IsoDate; currency: Currency }[],
+  weeks: WeekKey[],
+  include: Currency[] = [],
+): WeeklyEarningsSeries[] {
+  const byWeek = earningsByWeek(payments);
+  const out: WeeklyEarningsSeries[] = [];
+  for (const currency of CURRENCIES) {
+    const amounts = weeks.map((week) => byWeek.get(week)?.[currency] ?? 0);
+    if (!amounts.some((a) => a !== 0) && !include.includes(currency)) continue;
+    const cumulative = runningTotals(amounts);
+    const points = weeks.map((week, i) => ({
+      week,
+      label: weekAxisLabel(week),
+      axisLabel: weekAxisLabel(week),
+      longLabel: weekLongLabel(week),
+      amount: amounts[i],
+      cumulative: cumulative[i],
+    }));
+    out.push({ currency, points, summary: summarizePeriods(points) });
   }
   return out;
 }
@@ -103,7 +270,13 @@ export function acceptedSeries(acceptedAts: Date[], months: MonthKey[]): Accepte
     const key = monthKeyOfInstant(d);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
-  return months.map((month) => ({ month, label: monthLabel(month), count: counts.get(month) ?? 0 }));
+  return months.map((month, i) => ({
+    month,
+    label: monthLabel(month),
+    axisLabel: monthAxisLabel(month, i),
+    longLabel: formatMonthKey(month, "MMMM yyyy"),
+    count: counts.get(month) ?? 0,
+  }));
 }
 
 /** won / (won + lost) among prospects closed in the last `days` days. Null when none closed. */
@@ -130,6 +303,7 @@ export function buildDashboard(input: DashboardInput): DashboardData {
   const thisMonth = monthKeyOfInstant(now);
   const thisYear = thisMonth.slice(0, 4);
   const months = lastNMonths(CHART_MONTHS, now);
+  const weeks = lastNWeeks(CHART_WEEKS, now);
 
   const projectById = new Map(input.projects.map((p) => [p.id, p]));
   const clientName = new Map(input.clients.map((c) => [c.id, c.name]));
@@ -208,6 +382,11 @@ export function buildDashboard(input: DashboardInput): DashboardData {
     })
     .sort((a, b) => a.projectTitle.localeCompare(b.projectTitle) || a.round - b.round);
 
+  const monthly = earningsSeries(taggedPayments, months);
+  // The 12 week window sits inside the 12 month one, so the monthly list holds every currency.
+  const weekly = weeklyEarningsSeries(taggedPayments, weeks, monthly.map((s) => s.currency));
+  const accepted = acceptedSeries(acceptedAts, months);
+
   return {
     today,
     earnedThisMonth,
@@ -218,8 +397,10 @@ export function buildDashboard(input: DashboardInput): DashboardData {
     pendingBalance,
     pipelineValue,
     winRate: winRate(input.prospects, now),
-    earningsSeries: earningsSeries(taggedPayments, months),
-    acceptedSeries: acceptedSeries(acceptedAts, months),
+    earningsSeries: monthly,
+    weeklyEarningsSeries: weekly,
+    acceptedSeries: accepted,
+    acceptedSummary: summarizePeriods(accepted.map((p) => ({ amount: p.count, longLabel: p.longLabel }))),
     attention: { overdue, followUps, revisions },
   };
 }

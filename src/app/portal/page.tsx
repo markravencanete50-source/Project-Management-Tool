@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { FolderKanban } from "lucide-react";
+import { CalendarDays, FolderKanban } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
+import { AnimatedBar } from "@/components/motion/animated-bar";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { ProgressBar } from "@/components/projects-core/progress-bar";
 import { ProjectStatusBadge } from "@/components/projects-core/project-status-badge";
 import { formatIsoDate } from "@/lib/dates";
 import { listPortalProjects } from "@/server/data/projects";
@@ -14,7 +14,11 @@ export default async function PortalHomePage() {
 
   return (
     <>
-      <PageHeader title="Your projects" description="Progress, payments and agreements in one place." />
+      <PageHeader
+        eyebrow="Welcome back"
+        title="Your projects"
+        description="Progress, payments and agreements in one place. Open a project to see the details."
+      />
       {items.length === 0 ? (
         <Empty className="border">
           <EmptyHeader>
@@ -26,20 +30,33 @@ export default async function PortalHomePage() {
           </EmptyHeader>
         </Empty>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2">
+        <ul className="stagger grid gap-4 sm:grid-cols-2">
           {items.map(({ project, progress }) => (
-            <li key={project.id}>
-              <Link
-                href={`/portal/projects/${project.id}`}
-                className="flex h-full flex-col gap-4 rounded-xl bg-card p-4 ring-1 ring-foreground/10 transition-colors hover:bg-muted/40"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <span className="min-w-0 font-medium break-words">{project.title}</span>
+            <li key={project.id} className="min-w-0">
+              <div className="card-interactive relative flex h-full flex-col gap-5 rounded-xl border bg-card p-5 shadow-xs">
+                <div className="flex items-start justify-between gap-3">
+                  <Link
+                    href={`/portal/projects/${project.id}`}
+                    className="min-w-0 rounded-sm text-lg leading-snug font-semibold tracking-tight break-words outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/50"
+                  >
+                    {project.title}
+                  </Link>
                   <ProjectStatusBadge status={project.status} />
                 </div>
-                <ProgressBar value={progress} />
-                {project.deadline ? <span className="text-xs text-muted-foreground">Due {formatIsoDate(project.deadline)}</span> : null}
-              </Link>
+                <div className="mt-auto flex flex-col gap-2">
+                  <div className="flex items-baseline justify-between text-sm">
+                    <span className="text-muted-foreground">Progress</span>
+                    <span className="font-semibold tabular-nums">{Math.round(progress)}%</span>
+                  </div>
+                  <AnimatedBar value={progress} label={`Progress for ${project.title}`} />
+                </div>
+                {project.deadline ? (
+                  <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <CalendarDays className="size-4" aria-hidden />
+                    Due {formatIsoDate(project.deadline)}
+                  </span>
+                ) : null}
+              </div>
             </li>
           ))}
         </ul>

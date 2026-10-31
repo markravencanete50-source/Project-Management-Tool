@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SimpleSelect } from "@/components/projects-core/simple-select";
@@ -72,7 +72,7 @@ export function ClientFormDialog({ client, fullWidthTrigger }: Props) {
         {editing ? <Pencil data-icon="inline-start" /> : <Plus data-icon="inline-start" />}
         {editing ? "Edit" : "New client"}
       </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{editing ? "Edit client" : "New client"}</DialogTitle>
           <DialogDescription>
@@ -81,19 +81,22 @@ export function ClientFormDialog({ client, fullWidthTrigger }: Props) {
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
           <FieldGroup>
-            <Field data-invalid={Boolean(errors.name)}>
-              <FieldLabel htmlFor="client-name">Name</FieldLabel>
-              <Input id="client-name" autoComplete="off" aria-invalid={Boolean(errors.name)} {...register("name")} />
-              <FieldError errors={[errors.name]} />
-            </Field>
-            <Field data-invalid={Boolean(errors.company)}>
-              <FieldLabel htmlFor="client-company">Company</FieldLabel>
-              <Input id="client-company" autoComplete="off" {...register("company")} />
-              <FieldError errors={[errors.company]} />
-            </Field>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field data-invalid={Boolean(errors.name)}>
+                <FieldLabel htmlFor="client-name">Name</FieldLabel>
+                <Input id="client-name" autoComplete="off" aria-invalid={Boolean(errors.name)} {...register("name")} />
+                <FieldError errors={[errors.name]} />
+              </Field>
+              <Field data-invalid={Boolean(errors.company)}>
+                <FieldLabel htmlFor="client-company">Company</FieldLabel>
+                <Input id="client-company" autoComplete="off" {...register("company")} />
+                <FieldError errors={[errors.company]} />
+              </Field>
+            </div>
             <Field data-invalid={Boolean(errors.email)}>
               <FieldLabel htmlFor="client-email">Email</FieldLabel>
               <Input id="client-email" type="email" autoComplete="off" aria-invalid={Boolean(errors.email)} {...register("email")} />
+              <FieldDescription>Used for portal sign-in and email notifications.</FieldDescription>
               <FieldError errors={[errors.email]} />
             </Field>
             <Field>
@@ -105,10 +108,12 @@ export function ClientFormDialog({ client, fullWidthTrigger }: Props) {
                   <SimpleSelect id="client-currency" value={field.value} onValueChange={field.onChange} options={CURRENCY_OPTIONS} />
                 )}
               />
+              <FieldDescription>Pre-selected when you create a project for this client.</FieldDescription>
             </Field>
             <Field data-invalid={Boolean(errors.notes)}>
               <FieldLabel htmlFor="client-notes">Notes</FieldLabel>
               <Textarea id="client-notes" rows={3} {...register("notes")} />
+              <FieldDescription>Internal notes about this client.</FieldDescription>
               <FieldError errors={[errors.notes]} />
             </Field>
           </FieldGroup>

@@ -1,11 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Inter } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Providers } from "@/components/motion/providers";
 import "./globals.css";
 
-const geistSans = Geist({ variable: "--font-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const inter = Inter({ variable: "--font-inter", subsets: ["latin"], display: "swap" });
+const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
   title: { default: "Project Tracker", template: "%s | Project Tracker" },
@@ -13,14 +14,23 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1 };
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f9f9fc" },
+    { media: "(prefers-color-scheme: dark)", color: "#16151b" },
+  ],
+};
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full bg-background text-foreground">
-        <TooltipProvider>{children}</TooltipProvider>
-        <Toaster position="top-center" />
+        <Providers>
+          <TooltipProvider delay={200}>{children}</TooltipProvider>
+          <Toaster />
+        </Providers>
       </body>
     </html>
   );

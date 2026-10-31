@@ -42,7 +42,7 @@ export function ProjectEditDialog({ projectId, initial }: { projectId: string; i
         <Pencil data-icon="inline-start" />
         Edit
       </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Edit project</DialogTitle>
           <DialogDescription>Contract value and the payment schedule are edited in the Payments tab.</DialogDescription>
@@ -57,6 +57,7 @@ export function ProjectEditDialog({ projectId, initial }: { projectId: string; i
             <Field data-invalid={Boolean(errors.description)}>
               <FieldLabel htmlFor="edit-description">Description</FieldLabel>
               <Textarea id="edit-description" rows={4} {...register("description")} />
+              <FieldDescription>Scope summary shown on the project and used in the agreement.</FieldDescription>
               <FieldError errors={[errors.description]} />
             </Field>
             <Field data-invalid={Boolean(errors.revisionAllowance)}>

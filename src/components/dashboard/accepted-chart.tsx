@@ -1,34 +1,94 @@
 "use client";
 
-import { Bar, BarChart, LabelList, ResponsiveContainer, XAxis } from "recharts";
-import { ChartScroll } from "@/components/dashboard/chart-scroll";
-import type { AcceptedPoint } from "@/components/dashboard/calc";
+import { Card, CardContent } from "@/components/ui/card";
+import { AnimatedNumber } from "@/components/dashboard/animated-number";
+import { GhostChart } from "@/components/dashboard/ghost-chart";
+import { PeriodChart } from "@/components/dashboard/period-chart";
+import { TrendBadge } from "@/components/dashboard/trend-badge";
+import type { AcceptedPoint, PeriodSummary } from "@/components/dashboard/calc";
 
-/** Projects accepted per month. Counts are printed on every bar. */
-export function AcceptedChart({ points }: { points: AcceptedPoint[] }) {
-  const total = points.reduce((sum, p) => sum + p.count, 0);
+const plural = (n: number) => `${n} ${n === 1 ? "project" : "projects"}`;
+
+/** Projects accepted per month: the current month in full colour, counts on the bars, a text table for screen readers. */
+export function AcceptedChart({ points, summary }: { points: AcceptedPoint[]; summary: PeriodSummary }) {
+  const empty = summary.total === 0;
   return (
-    <ChartScroll>
-      <div
-        className="h-48 min-w-[600px]"
-        role="img"
-        aria-label={`Projects accepted per month, ${total} in the last ${points.length} months`}
-      >
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={points} margin={{ top: 22, right: 8, left: 8, bottom: 0 }} accessibilityLayer={false}>
-            <XAxis dataKey="label" tickLine={false} axisLine={false} interval={0} fontSize={11} stroke="var(--muted-foreground)" />
-            <Bar dataKey="count" fill="var(--primary)" radius={[4, 4, 0, 0]} isAnimationActive={false}>
-              <LabelList
-                dataKey="count"
-                position="top"
-                fontSize={11}
-                fill="var(--foreground)"
-                formatter={(value: unknown) => (typeof value === "number" && value !== 0 ? String(value) : "")}
-              />
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </ChartScroll>
+    <Card>
+      <CardContent className="grid gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold tracking-tight">Projects accepted</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">Per month, counted from the day each project was accepted.</p>
+          </div>
+          {empty ? null : (
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <TrendBadge trend={summary.trend} pct={summary.pct} versus="last month" />
+              <span className="text-xs text-muted-foreground">vs last month</span>
+            </div>
+          )}
+        </div>
+
+        {empty ? (
+          <GhostChart
+            title="No projects accepted in the last 12 months"
+            description="Accepted projects are counted when an agreement is signed or a deposit lands, depending on your setting."
+          />
+        ) : (
+          <>
+            <PeriodChart
+              points={points.map((p) => ({
+                key: p.month,
+                axisLabel: p.axisLabel,
+                longLabel: p.longLabel,
+                value: p.count,
+                cumulative: p.count,
+              }))}
+              mode="period"
+              color="var(--chart-4)"
+              format={plural}
+              formatAxis={String}
+              unit="accepted"
+              currentLabel="so far"
+              fadeKey="accepted"
+              integerAxis
+            />
+            <dl className="grid grid-cols-3 gap-x-4 border-t border-border pt-4">
+              <div>
+                <dt className="text-xs text-muted-foreground">Last 12 months</dt>
+                <dd className="mt-0.5 text-sm font-semibold tabular-nums">
+                  <AnimatedNumber value={summary.total} />
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">This month</dt>
+                <dd className="mt-0.5 text-sm font-semibold tabular-nums">{summary.current}</dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="text-xs text-muted-foreground">Best month</dt>
+                <dd className="mt-0.5 truncate text-sm font-semibold tabular-nums">{summary.best ? summary.best.amount : "None yet"}</dd>
+                {summary.best ? <dd className="truncate text-xs text-muted-foreground">{summary.best.label}</dd> : null}
+              </div>
+            </dl>
+            <table className="sr-only">
+              <caption>Projects accepted per month, last 12 months</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Month</th>
+                  <th scope="col">Accepted</th>
+                </tr>
+              </thead>
+              <tbody>
+                {points.map((p) => (
+                  <tr key={p.month}>
+                    <th scope="row">{p.longLabel}</th>
+                    <td>{p.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

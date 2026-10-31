@@ -23,18 +23,16 @@ export function ClientRevisionActions({
   if (status === "awaiting_approval") {
     return (
       <>
-        <p className="w-full text-sm text-muted-foreground">
+        <p className="w-full text-sm leading-relaxed text-foreground">
           This extra round is quoted at {priceLabel ?? "an amount to be confirmed"}. Approving adds it to your payment schedule, due today.
         </p>
         <Button
-          size="sm"
           disabled={pending}
           onClick={() => execute(() => decideChangeOrder(projectId, revisionId, true), { success: "Change order approved" })}
         >
           Approve {priceLabel ?? "quote"}
         </Button>
         <Button
-          size="sm"
           variant="outline"
           disabled={pending}
           onClick={() => {
@@ -52,7 +50,6 @@ export function ClientRevisionActions({
   if (status === "delivered") {
     return (
       <Button
-        size="sm"
         disabled={pending}
         onClick={() => execute(() => setRevisionStatus(projectId, revisionId, "approved"), { success: "Revision approved" })}
       >

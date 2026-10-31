@@ -63,6 +63,7 @@ export function AdminRevisionActions({
         <Button
           size="sm"
           variant="outline"
+          className="text-destructive hover:bg-destructive/10 hover:text-destructive sm:ml-auto"
           disabled={pending}
           onClick={() => {
             if (window.confirm("Cancel this revision? It will no longer count toward the allowance.")) move("cancelled", "Revision cancelled");

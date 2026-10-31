@@ -21,7 +21,7 @@ export function ProjectStatusControl({ projectId, status }: { projectId: string;
       options={OPTIONS}
       disabled={pending}
       ariaLabel="Change project status"
-      className="w-full sm:w-44"
+      className="w-full sm:w-48"
       onValueChange={(next) => execute(() => changeProjectStatus(projectId, next), { success: "Status updated" })}
     />
   );
@@ -40,7 +40,8 @@ export function ProjectArchiveButton({ projectId, archived }: { projectId: strin
     </Button>
   ) : (
     <Button
-      variant="outline"
+      variant="ghost"
+      className="text-muted-foreground hover:text-destructive"
       disabled={pending}
       onClick={() => execute(() => archiveProject(projectId), { success: "Project archived" })}
     >

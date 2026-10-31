@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, ListPlus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { AnimatedBar } from "@/components/motion/animated-bar";
 import { useAction } from "@/components/common/use-action";
 import { saveMilestones } from "@/server/actions/milestones";
 import { weightsValid } from "@/lib/projects";
@@ -71,51 +72,60 @@ export function MilestoneEditor({ projectId, milestones }: { projectId: string; 
         <div className="flex flex-col gap-3">
           {rows.length === 0 ? <p className="text-sm text-muted-foreground">No milestones yet. Add the first one below.</p> : null}
           {rows.map((row, index) => (
-            <div key={row.key} className="flex flex-col gap-2 rounded-lg border p-3">
-              <div className="flex gap-2">
-                <Input
-                  value={row.title}
-                  onChange={(e) => update(index, { title: e.target.value })}
-                  placeholder="Milestone title"
-                  aria-label={`Milestone ${index + 1} title`}
-                  aria-invalid={row.title.trim().length === 0}
-                  maxLength={160}
-                />
-                <div className="flex w-24 shrink-0 items-center gap-1">
+            <div key={row.key} className="enter-fade flex items-start gap-2 rounded-xl border bg-muted/30 p-3">
+              <span
+                aria-hidden="true"
+                className="mt-2 grid size-6 shrink-0 place-items-center rounded-full bg-background text-xs font-medium text-muted-foreground tabular-nums ring-1 ring-border sm:mt-1.5"
+              >
+                {index + 1}
+              </span>
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <div className="flex gap-2">
                   <Input
-                    value={row.weight}
-                    onChange={(e) => update(index, { weight: e.target.value })}
-                    inputMode="numeric"
-                    aria-label={`Milestone ${index + 1} weight`}
-                    aria-invalid={Number.isNaN(weights[index]) || weights[index] <= 0}
-                    className="text-right"
+                    value={row.title}
+                    onChange={(e) => update(index, { title: e.target.value })}
+                    placeholder="Milestone title"
+                    aria-label={`Milestone ${index + 1} title`}
+                    aria-invalid={row.title.trim().length === 0}
+                    maxLength={160}
                   />
-                  <span className="text-sm text-muted-foreground">%</span>
+                  <div className="flex w-24 shrink-0 items-center gap-1">
+                    <Input
+                      value={row.weight}
+                      onChange={(e) => update(index, { weight: e.target.value })}
+                      inputMode="numeric"
+                      aria-label={`Milestone ${index + 1} weight`}
+                      aria-invalid={Number.isNaN(weights[index]) || weights[index] <= 0}
+                      className="text-right tabular-nums"
+                    />
+                    <span className="text-sm text-muted-foreground">%</span>
+                  </div>
                 </div>
-              </div>
-              <div className="flex justify-end gap-1">
-                <Button type="button" variant="ghost" size="icon-sm" aria-label="Move up" disabled={index === 0} onClick={() => move(index, -1)}>
-                  <ArrowUp />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Move down"
-                  disabled={index === rows.length - 1}
-                  onClick={() => move(index, 1)}
-                >
-                  <ArrowDown />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Delete milestone"
-                  onClick={() => setRows((prev) => prev.filter((_, i) => i !== index))}
-                >
-                  <Trash2 />
-                </Button>
+                <div className="flex justify-end gap-1">
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label="Move up" disabled={index === 0} onClick={() => move(index, -1)}>
+                    <ArrowUp />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Move down"
+                    disabled={index === rows.length - 1}
+                    onClick={() => move(index, 1)}
+                  >
+                    <ArrowDown />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Delete milestone"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => setRows((prev) => prev.filter((_, i) => i !== index))}
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
@@ -127,8 +137,17 @@ export function MilestoneEditor({ projectId, milestones }: { projectId: string; 
             <ListPlus data-icon="inline-start" />
             Add milestone
           </Button>
+          {rows.length > 0 ? (
+            <AnimatedBar
+              value={Math.min(total, 100)}
+              label="Weight assigned"
+              className="h-1.5"
+              barClassName={total === 100 ? "bg-success" : total > 100 ? "bg-destructive" : "bg-warning"}
+              delay={0}
+            />
+          ) : null}
           <p
-            className={rows.length === 0 || total === 100 ? "text-sm text-muted-foreground" : "text-sm font-medium text-destructive"}
+            className={rows.length === 0 || total === 100 ? "text-sm text-muted-foreground tabular-nums" : "text-sm font-medium text-destructive tabular-nums"}
             aria-live="polite"
           >
             {hint}
