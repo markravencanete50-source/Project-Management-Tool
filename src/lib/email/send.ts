@@ -29,15 +29,16 @@ export async function sendMail(args: {
   devLog?: string;
 }): Promise<void> {
   const key = env().RESEND_API_KEY;
-  if (!key) {
-    console.info("[email] RESEND_API_KEY not set, not sending:", args.subject, "to", args.to, args.devLog ?? "");
+  const from = env().EMAIL_FROM;
+  if (!key || !from) {
+    console.info("[email] RESEND_API_KEY or EMAIL_FROM not set, not sending:", args.subject, "to", args.to, args.devLog ?? "");
     return;
   }
   const b = await brand();
   const { html, text } = renderEmail(args.content, b.name);
   client ??= new Resend(key);
   const { error } = await client.emails.send({
-    from: env().EMAIL_FROM,
+    from,
     to: args.to,
     subject: args.subject,
     html,

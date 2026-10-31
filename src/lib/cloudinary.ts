@@ -14,9 +14,17 @@ export function projectFolder(projectId: string, purpose: UploadPurpose): string
 }
 
 let configured = false;
+function cloudinaryEnv() {
+  const e = env();
+  if (!e.CLOUDINARY_CLOUD_NAME || !e.CLOUDINARY_API_KEY || !e.CLOUDINARY_API_SECRET) {
+    throw new Error("File storage is not set up yet: set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET");
+  }
+  return { ...e, CLOUDINARY_CLOUD_NAME: e.CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY: e.CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET: e.CLOUDINARY_API_SECRET };
+}
+
 function client() {
   if (!configured) {
-    const e = env();
+    const e = cloudinaryEnv();
     cloudinary.config({
       cloud_name: e.CLOUDINARY_CLOUD_NAME,
       api_key: e.CLOUDINARY_API_KEY,
@@ -58,7 +66,7 @@ export function uploadBuffer(
  * https://api.cloudinary.com/v1_1/{cloudName}/{resourceType}/upload.
  */
 export function signUpload(folder: string, resourceType: ResourceType) {
-  const e = env();
+  const e = cloudinaryEnv();
   const timestamp = Math.round(Date.now() / 1000);
   const params = { folder, timestamp, type: "authenticated" };
   const signature = client().utils.api_sign_request(params, e.CLOUDINARY_API_SECRET);
