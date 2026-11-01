@@ -51,6 +51,25 @@ export function addDaysIso(date: IsoDate, days: number): IsoDate {
   return d.toISOString().slice(0, 10);
 }
 
+/** Days in a calendar month (month is 1 to 12). */
+export function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/**
+ * Add whole months to an IsoDate, always counted from the ORIGINAL date so the day
+ * of month is never lost: 31 Jan + 1 month is 28 (or 29) Feb, and + 2 months is 31 Mar.
+ * A 29 Feb start lands on 28 Feb in a common year and 29 Feb again in a leap year.
+ */
+export function addMonthsClamped(date: IsoDate, months: number): IsoDate {
+  const [y, m, d] = date.split("-").map(Number);
+  const total = y * 12 + (m - 1) + months;
+  const year = Math.floor(total / 12);
+  const month = (total % 12) + 1;
+  const day = Math.min(d, daysInMonth(year, month));
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 /** Start of a Manila calendar day as an instant. */
 export function startOfManilaDay(date: IsoDate): Date {
   return fromZonedTime(`${date}T00:00:00`, TZ);

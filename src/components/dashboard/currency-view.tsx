@@ -1,7 +1,7 @@
 "use client";
 
 import { useOptimistic, useTransition } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Info } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SegmentedControl } from "@/components/dashboard/segmented-control";
@@ -34,6 +34,7 @@ export function fxNote(mix: "none" | "manual" | "mixed" | "live"): string {
 export function CurrencyViewToggle({ value }: { value: DashView }) {
   const router = useRouter();
   const pathname = usePathname();
+  const params = useSearchParams();
   const [, startTransition] = useTransition();
   const [shown, setShown] = useOptimistic<DashView, DashView>(value, (_, next) => next);
 
@@ -42,7 +43,10 @@ export function CurrencyViewToggle({ value }: { value: DashView }) {
     document.cookie = `${DASH_VIEW_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`;
     startTransition(() => {
       setShown(next);
-      router.replace(`${pathname}?view=${next}`, { scroll: false });
+      // Keep the date range (?range= or ?from= and ?to=) when the view changes.
+      const qs = new URLSearchParams(params.toString());
+      qs.set("view", next);
+      router.replace(`${pathname}?${qs.toString()}`, { scroll: false });
     });
   }
 

@@ -58,6 +58,17 @@ export type ScheduleKind = (typeof SCHEDULE_KINDS)[number];
 export const PAYMENT_METHODS = ["bank", "paypal", "wise", "gcash", "other"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
+/** How an expense was paid: every payment method plus cash and card. Payments keep their own shorter list. */
+export const EXPENSE_METHODS = [...PAYMENT_METHODS, "cash", "card"] as const;
+export type ExpenseMethod = (typeof EXPENSE_METHODS)[number];
+
+export const EXPENSE_CATEGORIES = ["software", "equipment", "subscriptions", "transport", "food", "taxes_fees", "marketing", "office", "other"] as const;
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+/** A recurring expense is a template that repeats; its occurrences are derived on read and never stored. */
+export const RECURRING_INTERVALS = ["none", "weekly", "monthly", "yearly"] as const;
+export type RecurringInterval = (typeof RECURRING_INTERVALS)[number];
+
 export const AGREEMENT_STATUSES = ["draft", "sent", "viewed", "signed", "void"] as const;
 export type AgreementStatus = (typeof AGREEMENT_STATUSES)[number];
 
@@ -228,6 +239,32 @@ export type StandalonePayment = {
   updatedAt: Date;
 };
 
+/**
+ * Money spent: top-level expenses/{id}. A recurring expense is a template; the
+ * repeats are derived on read (see src/lib/expenses.ts) and never stored.
+ */
+export type Expense = {
+  id: string;
+  description: string;
+  /** Integer minor units, greater than zero. */
+  amount: number;
+  currency: Currency;
+  /** The date it was spent (the first date for a recurring expense). */
+  spentOn: IsoDate;
+  category: ExpenseCategory;
+  method: ExpenseMethod;
+  vendor: string;
+  note: string;
+  clientId: string | null;
+  projectId: string | null;
+  recurring: RecurringInterval;
+  /** Last day a recurring expense may repeat on, or null to keep repeating. */
+  recurringUntil: IsoDate | null;
+  receiptPublicId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type AgreementSnapshot = {
   scope: string;
   price: number;
@@ -293,6 +330,10 @@ export type Settings = {
   agreementTemplate: string;
   /** Manual PHP rates in 1/10000 PHP per 1 unit (56.1234 is 561234). Absent = live. */
   fxOverrides: { USD?: number; GBP?: number };
+  /** Optional opening balance per currency in minor units (may be negative). Available money starts from it. */
+  openingBalances: { GBP?: number; USD?: number; PHP?: number };
+  /** When set, only payments and expenses on or after this date count towards available money. */
+  openingBalanceDate: IsoDate | null;
 };
 
 /** Standard return shape for every server action. */

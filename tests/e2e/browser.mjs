@@ -6,6 +6,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { runMatrix } from "./matrix.mjs";
+import { expensesFlow } from "./expenses-flow.mjs";
+import { seedShowcase } from "./seed.mjs";
 import { getFirestore } from "firebase-admin/firestore";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -149,6 +151,7 @@ export async function runBrowser({ base, cookies, ids, check }) {
       "/admin?view=original",
       "/admin/settings",
       "/admin/payments",
+      "/admin/expenses",
     ];
     // E2E_FAST=1 skips the per-page mobile overflow sweeps (they dominate the run time) while iterating.
     if (!process.env.E2E_FAST) for (const p of adminPaths) await pageChecks(admin, p, "admin mobile");
@@ -785,11 +788,14 @@ export async function runBrowser({ base, cookies, ids, check }) {
         return (await text(desk)) === projectBefore || "the project payments tab changed";
       });
 
+      await expensesFlow({ base, cookies, ids, check, context, desk, db, text });
+
       await dctx.close();
     }
 
     await adminCtx.close();
 
+    if (process.env.E2E_SHOTS) await seedShowcase(db);
     if (process.env.E2E_SHOTS) await runMatrix({ browser, base, cookies, ids, shots: SHOTS, host });
 
     await check("no browser console errors or page errors", () => consoleProblems.length === 0 || [...new Set(consoleProblems)].slice(0, 6).join(" || "));

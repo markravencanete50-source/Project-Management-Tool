@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutGroup, motion } from "motion/react";
-import { FolderKanban, LayoutDashboard, Settings, Target, Users, Wallet, type LucideIcon } from "lucide-react";
+import { FolderKanban, LayoutDashboard, Receipt, Settings, Target, Users, Wallet, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -13,6 +13,7 @@ export const NAV_ITEMS: { href: string; label: string; icon: LucideIcon; exact: 
   { href: "/admin/clients", label: "Clients", icon: Users, exact: false },
   { href: "/admin/projects", label: "Projects", icon: FolderKanban, exact: false },
   { href: "/admin/payments", label: "Payments", icon: Wallet, exact: false },
+  { href: "/admin/expenses", label: "Expenses", icon: Receipt, exact: false },
   { href: "/admin/settings", label: "Settings", icon: Settings, exact: false },
 ];
 

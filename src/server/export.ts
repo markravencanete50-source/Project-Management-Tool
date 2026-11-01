@@ -3,6 +3,8 @@ import { Timestamp } from "firebase-admin/firestore";
 import { requireAdmin } from "@/lib/auth/session";
 import { BACKUP_FOLDER, listFolder } from "@/lib/cloudinary";
 import { entryAmount, fromHundredths } from "@/lib/billing";
+import { todayIso } from "@/lib/dates";
+import { expenseLines, normalizeExpense } from "@/lib/expenses";
 import { fromMinor } from "@/lib/money";
 import { col } from "@/server/data/refs";
 
@@ -27,6 +29,8 @@ export type ExportData = {
   })[];
   /** Payment-only entries (collection standalonePayments), not attached to any project. */
   standalonePayments: Row[];
+  /** Expenses (collection expenses). A recurring expense is one template row; its repeats are derived and not stored. */
+  expenses: Row[];
   activity: Row[];
   settings: Record<string, unknown> | null;
 };
@@ -48,13 +52,14 @@ function rows(snap: FirebaseFirestore.QuerySnapshot): Row[] {
 
 /** Every collection except loginTokens, with project subcollections nested. */
 export async function exportAll(): Promise<ExportData> {
-  const [clients, prospects, projectsSnap, activity, settingsSnap, standalone] = await Promise.all([
+  const [clients, prospects, projectsSnap, activity, settingsSnap, standalone, expenses] = await Promise.all([
     col.clients().get(),
     col.prospects().get(),
     col.projects().get(),
     col.activity().get(),
     col.settings().get(),
     col.standalonePayments().get(),
+    col.expenses().get(),
   ]);
 
   const projects = await Promise.all(
@@ -88,6 +93,7 @@ export async function exportAll(): Promise<ExportData> {
     prospects: rows(prospects),
     projects,
     standalonePayments: rows(standalone),
+    expenses: rows(expenses),
     activity: rows(activity),
     settings: settingsSnap.exists ? (iso(settingsSnap.data()) as Record<string, unknown>) : null,
   };
@@ -174,6 +180,73 @@ export function paymentsCsv(data: ExportData): string {
         clientId ? (clientNames.get(clientId) ?? "") : payment.payerName,
         payment.createdAt,
         "standalone",
+      ]
+        .map(cell)
+        .join(","),
+    );
+  }
+  return `﻿${lines.join("\r\n")}\r\n`;
+}
+
+/**
+ * Expenses as one flat CSV, newest first. Recurring expenses are expanded the same way the app
+ * does on screen: the stored template is one row and every derived repeat up to today (Manila)
+ * is its own row with derived = yes and row_type recurring_repeat. Derived rows are not stored.
+ */
+export function expensesCsv(data: ExportData, today: string = todayIso()): string {
+  const clientNames = new Map(data.clients.map((c) => [c.id, String(c.name ?? "")]));
+  const projectTitles = new Map(data.projects.map((p) => [p.id, String(p.title ?? "")]));
+  const header = [
+    "expense_id",
+    "date",
+    "description",
+    "category",
+    "vendor",
+    "amount",
+    "amount_minor_units",
+    "currency",
+    "method",
+    "note",
+    "client_id",
+    "client_name",
+    "project_id",
+    "project_title",
+    "recurring",
+    "recurring_until",
+    "row_type",
+    "derived",
+    "has_receipt",
+    "recorded_at",
+  ];
+  const lines = [header.join(",")];
+  const expenses = data.expenses.map((row) => {
+    const created = typeof row.createdAt === "string" ? new Date(row.createdAt) : new Date(0);
+    const updated = typeof row.updatedAt === "string" ? new Date(row.updatedAt) : created;
+    return normalizeExpense(row.id, row, created, updated);
+  });
+  for (const line of expenseLines(expenses, today)) {
+    lines.push(
+      [
+        line.expenseId,
+        line.date,
+        line.description,
+        line.category,
+        line.vendor,
+        fromMinor(line.amount),
+        line.amount,
+        line.currency,
+        line.method,
+        line.note,
+        line.clientId ?? "",
+        line.clientId ? (clientNames.get(line.clientId) ?? "") : "",
+        line.projectId ?? "",
+        line.projectId ? (projectTitles.get(line.projectId) ?? "") : "",
+        line.recurring,
+        line.recurringUntil ?? "",
+        line.derived ? "recurring_repeat" : line.recurring === "none" ? "expense" : "recurring_template",
+        line.derived ? "yes" : "no",
+        line.receiptPublicId ? "yes" : "no",
+        line.createdAt.getTime() === 0 ? "" : line.createdAt.toISOString(),
       ]
         .map(cell)
         .join(","),

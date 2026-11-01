@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
-import { CornerDownLeft, FolderPlus, Moon, Plus, Search, Sun, UserPlus } from "lucide-react";
+import { CornerDownLeft, FolderPlus, Moon, Plus, Receipt, Search, Sun, UserPlus } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { openExpenseDialog } from "@/components/expenses/expense-dialog";
 import { openRecordPayment } from "@/components/payments/record-payment";
 import { NAV_ITEMS } from "@/components/shell/admin-nav";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     return [
       ...NAV_ITEMS.map((n) => ({ id: n.href, label: n.label, hint: "Go to", icon: n.icon, run: go(n.href) })),
       { id: "record-payment", label: "Record payment", hint: "Create", icon: Plus, run: () => openRecordPayment() },
+      { id: "add-expense", label: "Add expense", hint: "Create", icon: Receipt, run: () => openExpenseDialog() },
       { id: "new-project", label: "New project", hint: "Create", icon: FolderPlus, run: go("/admin/projects/new") },
       { id: "clients", label: "Add a client", hint: "Create", icon: UserPlus, run: go("/admin/clients") },
       { id: "light", label: "Light theme", hint: "Theme", icon: Sun, run: () => setTheme("light") },
@@ -33,7 +35,8 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return q ? commands.filter((c) => c.label.toLowerCase().includes(q) || c.hint.toLowerCase().includes(q)) : commands;
+    // Match the label, the hint, or both together, so "go to expenses" finds the Go to Expenses entry.
+    return q ? commands.filter((c) => `${c.hint} ${c.label}`.toLowerCase().includes(q) || c.label.toLowerCase().includes(q) || c.hint.toLowerCase().includes(q)) : commands;
   }, [commands, query]);
 
   useEffect(() => {

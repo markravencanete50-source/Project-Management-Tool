@@ -26,7 +26,15 @@ export async function saveSettings(raw: SettingsInput) {
       USD: input.fxOverrides.USD ?? FieldValue.delete(),
       GBP: input.fxOverrides.GBP ?? FieldValue.delete(),
     };
-    batch.set(col.settings(), { ...input, fxOverrides, timezone: TZ }, { merge: true });
+    // Same for the opening balances and their date: null removes the stored value.
+    // Absent (undefined) leaves what is stored alone.
+    const openingBalances = input.openingBalances && {
+      GBP: input.openingBalances.GBP ?? FieldValue.delete(),
+      USD: input.openingBalances.USD ?? FieldValue.delete(),
+      PHP: input.openingBalances.PHP ?? FieldValue.delete(),
+    };
+    const openingBalanceDate = input.openingBalanceDate === undefined ? undefined : (input.openingBalanceDate ?? FieldValue.delete());
+    batch.set(col.settings(), { ...input, fxOverrides, openingBalances, openingBalanceDate, timezone: TZ }, { merge: true });
     logActivity(batch, {
       type: "settings.updated",
       message: "Settings updated",
@@ -36,6 +44,7 @@ export async function saveSettings(raw: SettingsInput) {
     await batch.commit();
 
     revalidatePath("/admin/settings");
+    revalidatePath("/admin/expenses");
     // The dashboard converts with these rates, so it must not serve a stale render.
     revalidatePath("/admin");
   });

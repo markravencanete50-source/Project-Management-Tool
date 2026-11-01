@@ -40,6 +40,12 @@ export default async function SettingsPage() {
             businessEmail: settings.businessEmail,
             agreementTemplate: settings.agreementTemplate,
             fxOverrides: { USD: settings.fxOverrides.USD ?? null, GBP: settings.fxOverrides.GBP ?? null },
+            openingBalances: {
+              GBP: settings.openingBalances.GBP ?? null,
+              USD: settings.openingBalances.USD ?? null,
+              PHP: settings.openingBalances.PHP ?? null,
+            },
+            openingBalanceDate: settings.openingBalanceDate,
           }}
           liveRates={liveRates}
           defaultTemplate={DEFAULT_AGREEMENT_TEMPLATE}
@@ -52,7 +58,7 @@ export default async function SettingsPage() {
                 <FileJson className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <p className="min-w-0 text-sm text-muted-foreground">
                   <span className="block font-medium text-foreground">Everything as JSON</span>
-                  Clients, prospects, projects with milestones, schedule, payments, agreements, revisions, time entries and tasks, activity and settings.
+                  Clients, prospects, projects with milestones, schedule, payments, agreements, revisions, time entries and tasks, payment-only entries, expenses, activity and settings.
                 </p>
               </div>
               <Button variant="outline" className="shrink-0" render={<a href="/api/export?format=json" download />}>
@@ -84,6 +90,19 @@ export default async function SettingsPage() {
               <Button variant="outline" className="shrink-0" render={<a href="/api/export?format=time" download />}>
                 <Download data-icon="inline-start" />
                 Download time CSV
+              </Button>
+            </li>
+            <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <FileSpreadsheet className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <p className="min-w-0 text-sm text-muted-foreground">
+                  <span className="block font-medium text-foreground">Expenses as CSV</span>
+                  Every expense, with each repeat of a recurring expense on its own row marked as derived.
+                </p>
+              </div>
+              <Button variant="outline" className="shrink-0" render={<a href="/api/export?format=expenses" download />}>
+                <Download data-icon="inline-start" />
+                Download expenses CSV
               </Button>
             </li>
             <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">

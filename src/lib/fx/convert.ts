@@ -49,6 +49,8 @@ export function rateOf(table: Pick<RateTable, "quotes">, currency: Currency): nu
  */
 export function convertMinor(minor: number, rate: number): number {
   if (rate === 1) return minor;
+  // Negative amounts (a negative net) round half away from zero, like positive ones.
+  if (minor < 0) return -convertMinor(-minor, rate);
   return Math.round(Number((minor * rate).toFixed(6)));
 }
 

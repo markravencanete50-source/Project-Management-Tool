@@ -205,7 +205,7 @@ try {
   };
   const adminPages = [
     // Default view is PHP: totals are converted at the stub rates (GBP 70, USD 56) and name the original amounts.
-    ["/admin", ["£120.00", "$250.00", "Build milestone", "Recurring billed this month", "Converted at market rates", "₱", "Expected this month", "Pipeline potential", "Not weighted by win chance", "Top open prospects"]],
+    ["/admin", ["£120.00", "$250.00", "Build milestone", "Recurring billed this month", "Converted at market rates", "₱", "Expected this month", "Pipeline potential", "Not weighted by win chance", "Top open prospects", "Available money", "Available now", "Income vs expenses", "Spending by category", "Add expense"]],
     ["/admin?view=original", ["£120.00", "$250.00", "Build milestone", "Recurring billed this month", "£120.00", "Pipeline potential", "Expected this month"]],
     ["/admin/prospects", ["Nina New", "Carl Contacted", "Lena Lost"]],
     ["/admin/prospects?view=kanban", ["Nina New", "Pia Proposal", "Wanda Waiting", "Waiting for client"]],
@@ -234,7 +234,8 @@ try {
     ["/admin/prospects?kind=retainer", ["Rita Retainer", "$3,000.00/mo"]],
     ["/admin/prospects/pr-ret", ["Rita Retainer", "Estimated monthly value", "$3,000.00/mo", "$40.00 / hour", "about $7,040.00 / month"]],
     ["/admin/payments", ["Payments", "Record payment", "Project: Acme Website Rebuild"]],
-    ["/admin/settings", ["Agreement template", "Export all data", "Time log as CSV", "Tasks as CSV", "Exchange rates", "USD to PHP", "GBP to PHP"]],
+    ["/admin/expenses", ["Expenses", "Add expense", "No expenses yet", "By category"]],
+    ["/admin/settings", ["Agreement template", "Export all data", "Time log as CSV", "Tasks as CSV", "Exchange rates", "USD to PHP", "GBP to PHP", "Opening balance date", "Expenses as CSV"]],
   ];
   for (const [p, needles] of adminPages) {
     await check(`admin GET ${p} is 200`, async () => {
@@ -337,6 +338,13 @@ try {
     const r = await get(bFile, cookies.admin);
     return (r.status === 302 && r.location.startsWith("https://api.cloudinary.com/")) || `status ${r.status} ${r.location}`;
   });
+  const expenseReceipt = "/api/files/raw:pmt/expenses/receipts/x.pdf";
+  await check("files: expense receipts are admin only (client 404, no cookie 401, admin redirect)", async () => {
+    const a = await get(expenseReceipt, cookies.a);
+    const none = await get(expenseReceipt);
+    const admin = await get(expenseReceipt, cookies.admin);
+    return (a.status === 404 && none.status === 401 && admin.status === 302 && admin.location.startsWith("https://api.cloudinary.com/")) || `${a.status} / ${none.status} / ${admin.status}`;
+  });
   await check("files: client A requesting backups is 404", async () => ((await get("/api/files/raw:pmt/backups/2026-01-01.json", cookies.a)).status === 404) || "not 404");
 
   // ---- export
@@ -361,6 +369,17 @@ try {
   await check("export csv as admin is 200", async () => {
     const r = await get("/api/export?format=csv", cookies.admin);
     return (r.status === 200 && r.text.includes("Acme Website Rebuild")) || `status ${r.status}`;
+  });
+  await check("export json has an empty expenses list and the expenses CSV has only its header", async () => {
+    const json = JSON.parse((await get("/api/export?format=json", cookies.admin)).text);
+    const csv = await get("/api/export?format=expenses", cookies.admin);
+    const lines = csv.text.replace(/^﻿/, "").trim().split("\r\n");
+    return (Array.isArray(json.expenses) && json.expenses.length === 0 && csv.status === 200 && lines.length === 1 && lines[0].includes("row_type,derived")) || "unexpected expenses export";
+  });
+  await check("export expenses CSV is refused for a client and with no cookie", async () => {
+    const a = await get("/api/export?format=expenses", cookies.a);
+    const none = await get("/api/export?format=expenses");
+    return ([401, 403].includes(a.status) && [401, 403].includes(none.status)) || `${a.status} / ${none.status}`;
   });
   await check("export as client A is refused", async () => [401, 403].includes((await get("/api/export?format=json", cookies.a)).status) || "not 401/403");
   await check("export with no cookie is refused", async () => [401, 403].includes((await get("/api/export?format=json")).status) || "not 401/403");

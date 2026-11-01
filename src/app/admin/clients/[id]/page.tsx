@@ -18,6 +18,9 @@ import { formatInstant, formatIsoDate } from "@/lib/dates";
 import { getClient } from "@/server/data/clients";
 import { listClientProjects } from "@/server/data/projects";
 import { listStandaloneForClient } from "@/server/data/standalone-payments";
+import { listExpenseLinesForClient } from "@/server/data/expenses";
+import { CATEGORY_LABELS, RECURRING_LABELS } from "@/components/expenses/labels";
+import { expenseTotals } from "@/lib/expenses";
 import { METHOD_LABELS } from "@/components/payments/labels";
 import { currenciesIn } from "@/lib/money";
 import { ledgerTotals } from "@/lib/standalone-payments";
@@ -26,8 +29,14 @@ export const metadata = { title: "Client" };
 
 export default async function ClientDetailPage({ params }: PageProps<"/admin/clients/[id]">) {
   const { id } = await params;
-  const [client, projects, standalone] = await Promise.all([getClient(id), listClientProjects(id), listStandaloneForClient(id)]);
+  const [client, projects, standalone, expenseLines] = await Promise.all([
+    getClient(id),
+    listClientProjects(id),
+    listStandaloneForClient(id),
+    listExpenseLinesForClient(id),
+  ]);
   const standaloneTotals = ledgerTotals(standalone);
+  const expenseSum = expenseTotals(expenseLines);
   const archived = Boolean(client.archivedAt);
 
   return (
@@ -193,6 +202,31 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
             </ul>
             <Link href="/admin/payments" className="text-sm font-medium text-primary underline-offset-4 hover:underline">
               Open all payments
+            </Link>
+          </section>
+        ) : null}
+
+        {expenseLines.length > 0 ? (
+          <section className="flex flex-col gap-4" data-testid="client-expenses">
+            <SectionHeader
+              title="Expenses for this client"
+              description={`Money you spent on this client's work. Total: ${currenciesIn(expenseSum)
+                .map((c) => formatMoney(expenseSum[c] ?? 0, c))
+                .join(" + ")}. Never shown to the client.`}
+            />
+            <ul className="divide-y overflow-hidden rounded-xl border bg-card">
+              {expenseLines.map((e) => (
+                <li key={e.key} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3 text-sm">
+                  <span className="font-semibold tabular-nums">{formatMoney(e.amount, e.currency)}</span>
+                  <span className="min-w-0 flex-1 text-muted-foreground">
+                    <span className="font-medium text-foreground">{e.description}</span>, {CATEGORY_LABELS[e.category]}, {formatIsoDate(e.date)}
+                    {e.recurring !== "none" ? `, ${RECURRING_LABELS[e.recurring].toLowerCase()}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <Link href="/admin/expenses" className="text-sm font-medium text-primary underline-offset-4 hover:underline">
+              Open all expenses
             </Link>
           </section>
         ) : null}

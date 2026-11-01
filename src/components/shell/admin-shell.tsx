@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AdminNav, NAV_ITEMS } from "@/components/shell/admin-nav";
+import { ExpenseDialogHost } from "@/components/expenses/expense-dialog";
 import { RecordPaymentHost } from "@/components/payments/record-payment";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { ThemeToggle } from "@/components/shell/theme-toggle";
@@ -185,6 +186,7 @@ export function AdminShell({
       </div>
       <CommandPalette open={palette} onOpenChange={setPalette} />
       <RecordPaymentHost />
+      <ExpenseDialogHost />
     </div>
   );
 }

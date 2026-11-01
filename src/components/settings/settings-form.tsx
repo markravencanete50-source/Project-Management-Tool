@@ -5,7 +5,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { Building2, FileSignature, Landmark, RotateCcw, ScrollText } from "lucide-react";
+import { Building2, FileSignature, Landmark, PiggyBank, RotateCcw, ScrollText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +15,7 @@ import { saveSettings } from "@/server/actions/settings";
 import { settingsSchema, type SettingsInput } from "@/lib/validation/settings";
 import { SegmentedControl } from "@/components/dashboard/segmented-control";
 import { OVERRIDABLE, parseRateInput, unitsToInput, type OverridableCurrency } from "@/lib/fx/overrides";
+import { CURRENCIES, fromMinor, toMinorSigned, type Currency } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 export type LiveRateHint = { rate: string; raw: number; label: string };
@@ -103,6 +104,40 @@ function FxRateRow({
         <p className="text-sm text-muted-foreground">The dashboard uses the live {currency} rate.</p>
       )}
     </div>
+  );
+}
+
+/** One currency's optional opening balance: a signed decimal, blank for none. */
+function OpeningBalanceRow({ currency, form }: { currency: Currency; form: ReturnType<typeof useForm<SettingsInput>> }) {
+  const path = `openingBalances.${currency}` as const;
+  const stored = form.getValues(path);
+  const [text, setText] = useState(typeof stored === "number" && !Number.isNaN(stored) ? fromMinor(stored) : "");
+  const error = form.formState.errors.openingBalances?.[currency];
+  const inputId = `opening-${currency}`;
+
+  function push(next: string) {
+    setText(next);
+    // Blank means no opening balance; anything unreadable is NaN so the schema shows its message.
+    const minor = next.trim() === "" ? null : toMinorSigned(next);
+    form.setValue(path, next.trim() === "" ? null : (minor ?? Number.NaN), { shouldDirty: true, shouldValidate: true });
+  }
+
+  return (
+    <Field data-invalid={!!error}>
+      <FieldLabel htmlFor={inputId}>{currency} opening balance</FieldLabel>
+      <Input
+        id={inputId}
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        placeholder="0.00"
+        value={text}
+        onChange={(e) => push(e.target.value)}
+        aria-invalid={!!error}
+        className="tabular-nums"
+      />
+      <FieldError errors={[error]} />
+    </Field>
   );
 }
 
@@ -262,6 +297,35 @@ export function SettingsForm({
             <FxRateRow key={`${c}-${discards}`} currency={c} form={form} live={liveRates[c]} />
           ))}
           <p className="text-xs text-muted-foreground">PHP to PHP is always 1. When every currency in use has your rate, no live rate is looked up.</p>
+        </FieldGroup>
+      </SettingsSection>
+
+      <SettingsSection
+        icon={<PiggyBank />}
+        title="Money"
+        description="Optional opening balance for available money. Available money is opening balance + money received - money spent: a net figure from what you record here, not a bank balance."
+      >
+        <FieldGroup>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {CURRENCIES.map((c) => (
+              <OpeningBalanceRow key={`${c}-${discards}`} currency={c} form={form} />
+            ))}
+          </div>
+          <FieldDescription>Leave a currency blank for no opening balance. Use a minus sign if you started in debt, for example -200.</FieldDescription>
+          <Field data-invalid={!!errors.openingBalanceDate}>
+            <FieldLabel htmlFor="openingBalanceDate">Opening balance date (optional)</FieldLabel>
+            <Input
+              id="openingBalanceDate"
+              type="date"
+              className="sm:max-w-48"
+              aria-invalid={!!errors.openingBalanceDate}
+              {...form.register("openingBalanceDate", { setValueAs: (v: string) => (v ? v : null) })}
+            />
+            <FieldDescription>
+              When set, money before this date is not counted: only payments and expenses on or after it are included in available money. Earnings and spending charts still show everything.
+            </FieldDescription>
+            <FieldError errors={[errors.openingBalanceDate]} />
+          </Field>
         </FieldGroup>
       </SettingsSection>
 

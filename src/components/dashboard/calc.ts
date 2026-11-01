@@ -195,7 +195,7 @@ export function monthLabel(month: MonthKey): string {
 }
 
 /** "Oct" for most months, "Jan '27" for January and for the first bucket so the year is never lost. */
-function monthAxisLabel(month: MonthKey, index: number): string {
+export function monthAxisLabel(month: MonthKey, index: number): string {
   const short = formatMonthKey(month, "MMM");
   return month.endsWith("-01") || index === 0 ? `${short} '${month.slice(2, 4)}` : short;
 }

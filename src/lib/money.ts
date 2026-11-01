@@ -20,6 +20,18 @@ export function toMinor(input: string | number): number | null {
   return Number.isSafeInteger(minor) ? minor : null;
 }
 
+/**
+ * Like toMinor but accepts a leading minus ("-1500.50"), for amounts that may be
+ * negative such as an opening balance. Still string arithmetic, still at most 2 decimals.
+ */
+export function toMinorSigned(input: string): number | null {
+  const raw = input.trim();
+  const negative = raw.startsWith("-");
+  const minor = toMinor(negative ? raw.slice(1) : raw);
+  if (minor === null) return null;
+  return negative ? (minor === 0 ? 0 : -minor) : minor;
+}
+
 /** Minor units to a plain decimal string for form inputs ("1500.50"). */
 export function fromMinor(minor: number): string {
   const sign = minor < 0 ? "-" : "";

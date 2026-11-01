@@ -55,6 +55,56 @@ export async function runMatrix({ browser, base, cookies, ids, shots, host }) {
         await page.waitForTimeout(600);
       },
     ],
+    [
+      "range-control",
+      "/admin?view=php&range=last-6-months",
+      async (page) => {
+        await page.getByRole("heading", { name: "Earnings" }).scrollIntoViewIfNeeded();
+        await page.evaluate(() => window.scrollBy(0, -24));
+        await page.getByTestId("range-custom").click();
+        await page.getByTestId("range-popover").waitFor({ timeout: 5000 });
+        await page.waitForTimeout(500);
+        return { viewport: true };
+      },
+    ],
+    ["expenses", "/admin/expenses"],
+    ["expenses-filtered", "/admin/expenses?category=office&month=all"],
+    [
+      "add-expense",
+      "/admin/expenses",
+      async (page) => {
+        await page.getByRole("button", { name: "Add expense" }).first().click();
+        const dialog = page.getByRole("dialog");
+        await dialog.getByLabel("What did you buy").fill("Figma team plan");
+        await dialog.getByLabel("Amount").fill("45.00");
+        await page.waitForTimeout(500);
+        return { element: dialog };
+      },
+    ],
+    [
+      "add-expense-more",
+      "/admin/expenses",
+      async (page) => {
+        await page.getByRole("button", { name: "Add expense" }).first().click();
+        const dialog = page.getByRole("dialog");
+        await dialog.getByLabel("What did you buy").fill("Coworking desk");
+        await dialog.getByLabel("Amount").fill("8500.00");
+        await dialog.getByRole("button", { name: /More details/ }).click();
+        await dialog.getByLabel("Repeat").selectOption("monthly");
+        await dialog.getByLabel("Paid with").selectOption("gcash");
+        await dialog.getByLabel("Vendor (optional)").fill("Hub Manila");
+        await page.waitForTimeout(500);
+        return { element: dialog };
+      },
+    ],
+    [
+      "settings-money",
+      "/admin/settings",
+      async (page) => {
+        await page.waitForTimeout(300);
+        return { element: page.locator('[data-slot="card"]').filter({ has: page.getByText("Opening balance date") }).first() };
+      },
+    ],
     ["prospects-table", "/admin/prospects"],
     ["prospects-board", "/admin/prospects?view=kanban"],
     ["prospect-detail", "/admin/prospects/pr-due"],
@@ -153,6 +203,8 @@ export async function runMatrix({ browser, base, cookies, ids, shots, host }) {
 
   for (const size of SIZES) {
     for (const theme of THEMES) {
+      // A targeted run (E2E_SHOTS=<text>) takes 1280 light, 1280 dark and 390 light only.
+      if (only && size.mobile && theme === "dark") continue;
       for (const [cookie, allPages] of groups) {
         const pages = only ? allPages.filter(([name]) => only.split(",").some((o) => name.includes(o))) : allPages;
         if (pages.length === 0) continue;
@@ -169,7 +221,19 @@ export async function runMatrix({ browser, base, cookies, ids, shots, host }) {
         for (const [name, p, action] of pages) {
           try {
             await page.goto(base + p, { waitUntil: "networkidle" });
-            if (action) await action(page);
+            const target = action ? await action(page) : undefined;
+            if (target?.viewport) {
+              // An open popover: photograph what is on screen.
+              await page.waitForTimeout(600);
+              await page.screenshot({ path: path.join(out, `${name}-${size.key}-${theme}.png`) });
+              continue;
+            }
+            if (target?.element) {
+              // A dialog or a single card: photograph just that.
+              await page.waitForTimeout(600);
+              await target.element.screenshot({ path: path.join(out, `${name}-${size.key}-${theme}.png`) });
+              continue;
+            }
             // Content below the fold reveals on scroll: walk down the page and back so the capture shows it.
             await page.evaluate(async () => {
               const step = Math.max(300, Math.floor(window.innerHeight * 0.7));

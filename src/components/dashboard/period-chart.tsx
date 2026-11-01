@@ -46,7 +46,7 @@ function ChartTooltip({ active, payload, format, mode, lastKey, currentLabel, un
     <div className="min-w-40 rounded-lg border border-border bg-popover px-3 py-2 text-popover-foreground shadow-md">
       <div className="text-xs text-muted-foreground">
         {point.longLabel}
-        {point.key === lastKey ? ` (${currentLabel})` : ""}
+        {currentLabel && point.key === lastKey ? ` (${currentLabel})` : ""}
       </div>
       <div className="mt-0.5 text-base font-semibold tracking-tight tabular-nums">
         {format(mode === "period" ? point.value : point.cumulative)}
@@ -109,7 +109,8 @@ export function PeriodChart({
   const lastKey = points[lastIndex]?.key ?? "";
   const plotWidth = Math.max(0, width - 52);
   const step = Math.max(1, Math.ceil(LABEL_SLOT / Math.max(1, plotWidth / Math.max(1, points.length))));
-  const labelAll = width >= 560 && mode === "period";
+  // Value labels on every bar only while the bars are few enough to stay readable.
+  const labelAll = width >= 560 && mode === "period" && points.length <= 16;
 
   const tooltip = (
     <ChartTooltip format={format} mode={mode} lastKey={lastKey} currentLabel={currentLabel} unit={unit} />

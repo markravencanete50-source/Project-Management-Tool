@@ -261,3 +261,28 @@ export async function sessionCookieFor(uid, appBase, authHost = process.env.FIRE
   if (!setCookie) throw new Error("No __session cookie returned");
   return setCookie.split(";")[0].slice("__session=".length);
 }
+
+/**
+ * Showcase data for the screenshot run only (E2E_SHOTS): a believable spread of expenses across
+ * categories, currencies and weeks, one repeating, and an opening balance, so the dashboard and
+ * Expenses page are photographed with real-looking content. Called after the functional checks.
+ */
+export async function seedShowcase(db) {
+  const today = manilaToday();
+  const now = Timestamp.now();
+  const base = { createdAt: now, updatedAt: now };
+  const e = (id, description, amount, currency, daysAgo, category, extra = {}) =>
+    db.collection("expenses").doc(id).set({
+      description, amount, currency, spentOn: addDays(today, -daysAgo), category, method: "card", vendor: "", note: "",
+      clientId: null, projectId: null, recurring: "none", recurringUntil: null, receiptPublicId: null, ...extra, ...base,
+    });
+  await e("x1", "Coworking desk", 850000, "PHP", 62, "office", { recurring: "monthly", vendor: "Hub Manila", method: "gcash" });
+  await e("x2", "Figma team plan", 4500, "USD", 40, "subscriptions", { recurring: "monthly", vendor: "Figma" });
+  await e("x3", "Laptop stand and keyboard", 1240000, "PHP", 25, "equipment", { vendor: "Digital Walker", method: "bank" });
+  await e("x4", "Client lunch", 185000, "PHP", 0, "food", { clientId: IDS.clientA, note: "Kickoff for the rebuild", method: "cash" });
+  await e("x5", "Hosting", 2800, "GBP", 12, "software", { vendor: "Vercel", projectId: IDS.projA1, clientId: IDS.clientA });
+  await e("x6", "Facebook ads", 15000, "USD", 0, "marketing", { vendor: "Meta" });
+  await e("x7", "Grab to client meeting", 38000, "PHP", 0, "transport", { method: "gcash" });
+  await e("x8", "BIR quarterly tax", 920000, "PHP", 33, "taxes_fees", { method: "bank" });
+  await db.collection("settings").doc("app").set({ openingBalances: { PHP: 5000000, GBP: 20000 } }, { merge: true });
+}

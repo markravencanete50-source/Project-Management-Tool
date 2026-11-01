@@ -5,11 +5,11 @@ import { db } from "@/lib/firebase/admin";
 import { col } from "@/server/data/refs";
 import { loadRateTable } from "@/server/data/fx";
 import { standaloneFromSnap } from "@/server/data/standalone-payments";
+import { expensesFromSnap } from "@/server/data/expenses";
 import { getSettings } from "@/server/data/settings";
 import { fromDoc, fromDocs, projectsFromDocs, prospectsFromDocs } from "@/server/data/convert";
+import { buildDashboardWithMoney, type DashboardWithMoney } from "@/components/dashboard/flow-calc";
 import {
-  buildDashboard,
-  type DashboardData,
   type DashPayment,
   type DashProject,
   type DashProspect,
@@ -18,6 +18,8 @@ import {
   type DashTask,
   type DashTimeEntry,
 } from "@/components/dashboard/calc";
+import type { RangeSpec } from "@/lib/date-range";
+import type { Currency } from "@/lib/money";
 import type { Client, Payment, Revision, ScheduleLine, Task, TimeEntry } from "@/lib/types";
 
 const projectIdOf = (ref: DocumentReference) => ref.parent.parent!.id;
@@ -29,9 +31,9 @@ const projectIdOf = (ref: DocumentReference) => ref.parent.parent!.id;
  * `weeklyEarningsSeries` (last 12 Monday-start weeks), each bucketed in Asia/Manila
  * by the payment's paidOn date, one series per currency.
  */
-export async function getDashboardData(opts: { convert?: boolean } = {}): Promise<DashboardData> {
+export async function getDashboardData(opts: { convert?: boolean; range?: RangeSpec } = {}): Promise<DashboardWithMoney> {
   await requireAdmin();
-  const [projectsSnap, clientsSnap, prospectsSnap, paymentsSnap, scheduleSnap, revisionsSnap, entriesSnap, tasksSnap, standaloneSnap] = await Promise.all([
+  const [projectsSnap, clientsSnap, prospectsSnap, paymentsSnap, scheduleSnap, revisionsSnap, entriesSnap, tasksSnap, standaloneSnap, expensesSnap] = await Promise.all([
     col.projects().get(),
     col.clients().get(),
     col.prospects().get(),
@@ -41,6 +43,7 @@ export async function getDashboardData(opts: { convert?: boolean } = {}): Promis
     db().collectionGroup("timeEntries").get(),
     db().collectionGroup("tasks").get(),
     col.standalonePayments().get(),
+    col.expenses().get(),
   ]);
 
   const projects: DashProject[] = projectsFromDocs(projectsSnap);
@@ -72,12 +75,25 @@ export async function getDashboardData(opts: { convert?: boolean } = {}): Promis
   // Rates are only fetched for the PHP view, and only for currencies actually in use.
   // Manual rates from Settings are read fresh and applied by loadRateTable after the (cached) live fetch.
   const standalonePayments = standaloneFromSnap(standaloneSnap).map((s) => ({ amount: s.amount, paidOn: s.paidOn, currency: s.currency }));
+  // Expenses and the opening balance feed only the money block (available money, income vs
+  // expenses, spending by category); earnings and every other figure ignore them.
+  const settings = await getSettings();
+  const expenses = expensesFromSnap(expensesSnap);
+  const opening = { balances: settings.openingBalances, date: settings.openingBalanceDate };
   const rates = opts.convert
     ? await loadRateTable(
-        [...new Set([...projects.map((p) => p.currency), ...prospects.map((p) => p.currency), ...standalonePayments.map((s) => s.currency)])],
-        (await getSettings()).fxOverrides,
+        [
+          ...new Set([
+            ...projects.map((p) => p.currency),
+            ...prospects.map((p) => p.currency),
+            ...standalonePayments.map((s) => s.currency),
+            ...expenses.map((e) => e.currency),
+            ...(Object.keys(opening.balances) as Currency[]),
+          ]),
+        ],
+        settings.fxOverrides,
       )
     : undefined;
 
-  return buildDashboard({ projects, clients, prospects, payments, standalonePayments, schedule, revisions, timeEntries, tasks, rates });
+  return buildDashboardWithMoney({ projects, clients, prospects, payments, standalonePayments, schedule, revisions, timeEntries, tasks, rates, expenses, opening, range: opts.range });
 }

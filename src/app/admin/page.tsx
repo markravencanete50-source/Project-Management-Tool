@@ -1,6 +1,11 @@
 import { cookies } from "next/headers";
 import { CalendarCheck, FolderKanban, Hourglass, Repeat, TrendingUp, Trophy, Wallet } from "lucide-react";
 import { RecordPaymentButton } from "@/components/payments/record-payment";
+import { AddExpenseButton } from "@/components/expenses/expense-dialog";
+import { AvailableMoneyCard } from "@/components/dashboard/available-money-card";
+import { FlowSection } from "@/components/dashboard/flow-chart";
+import { SpendingByCategory } from "@/components/dashboard/spending-by-category";
+import { formatMonthKey } from "@/lib/dates";
 import { PageHeader } from "@/components/common/page-header";
 import { AcceptedChart } from "@/components/dashboard/accepted-chart";
 import { AnimatedNumber } from "@/components/dashboard/animated-number";
@@ -18,6 +23,7 @@ import { DASH_VIEW_COOKIE, type DashView } from "@/lib/dash-view";
 import { rateOf, sourceLabel, timeAgo } from "@/lib/fx/convert";
 import { sourceMix } from "@/lib/fx/overrides";
 import { CURRENCIES, currenciesIn, formatMoney, type Currency } from "@/lib/money";
+import { parseRangeSpec } from "@/lib/date-range";
 import { getDashboardData } from "@/server/data/dashboard";
 
 function chosenView(param: string | string[] | undefined, cookie: string | undefined): DashView {
@@ -29,7 +35,7 @@ function chosenView(param: string | string[] | undefined, cookie: string | undef
 export default async function DashboardPage({ searchParams }: PageProps<"/admin">) {
   const [sp, jar] = await Promise.all([searchParams, cookies()]);
   const wanted = chosenView(sp.view, jar.get(DASH_VIEW_COOKIE)?.value);
-  const data = await getDashboardData({ convert: wanted === "php" });
+  const data = await getDashboardData({ convert: wanted === "php", range: parseRangeSpec(sp) });
   const { winRate, acceptedSummary, converted } = data;
   const year = data.today.slice(0, 4);
   // The PHP view needs rates; without them the page shows original currencies and says so.
@@ -73,10 +79,11 @@ export default async function DashboardPage({ searchParams }: PageProps<"/admin"
       <div className="min-w-0">
         <PageHeader
           title="Dashboard"
-          description="Money received, projects accepted and what needs your attention."
+          description="Money received and spent, projects accepted and what needs your attention."
           actions={
             <>
               <RecordPaymentButton variant="outline" />
+              <AddExpenseButton variant="outline" />
               <CurrencyViewToggle value={wanted} />
             </>
           }
@@ -94,6 +101,8 @@ export default async function DashboardPage({ searchParams }: PageProps<"/admin"
         ) : null}
 
         <Stagger className="grid grid-cols-2 gap-3 xl:grid-cols-12 xl:gap-4">
+          <AvailableMoneyCard money={data.money} view={view} className="col-span-2 xl:col-span-12" />
+
           <KpiCard label="Earned this month" icon={Wallet} tone="primary" className="col-span-2 sm:col-span-1 xl:col-span-3">
             {view === "php" && converted ? (
               <PhpKpi
@@ -209,9 +218,24 @@ export default async function DashboardPage({ searchParams }: PageProps<"/admin"
 
         <div className="mt-8">
           <EarningsSection
-            monthly={view === "php" && converted ? converted.earningsSeries : data.earningsSeries}
-            weekly={view === "php" && converted ? converted.weeklyEarningsSeries : data.weeklyEarningsSeries}
-            converted={view === "php" && Boolean(converted)}
+            key={`earn-${data.range.range.from}-${data.range.range.to}`}
+            data={data.range}
+            converted={view === "php" && Boolean(data.range.converted)}
+            today={data.today}
+          />
+        </div>
+
+        <div className="mt-8">
+          <FlowSection key={`flow-${data.range.range.from}-${data.range.range.to}`} data={data.range} converted={view === "php" && Boolean(data.range.converted)} />
+        </div>
+
+        <div className="mt-8">
+          <SpendingByCategory
+            month={view === "php" && data.money.converted ? data.money.converted.categoriesMonth : data.money.categoriesMonth}
+            year={view === "php" && data.money.converted ? data.money.converted.categoriesYear : data.money.categoriesYear}
+            monthLabel={formatMonthKey(data.today.slice(0, 7), "MMMM yyyy")}
+            yearLabel={year}
+            converted={view === "php" && Boolean(data.money.converted)}
           />
         </div>
 

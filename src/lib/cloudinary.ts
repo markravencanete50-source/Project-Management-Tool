@@ -17,6 +17,14 @@ export function isStandaloneReceipt(storedId: string): boolean {
   return publicId.startsWith(`${STANDALONE_RECEIPT_FOLDER}/`) && !publicId.includes("..");
 }
 
+/** Receipts for expenses. Admin only, like payment-only receipts: /api/files serves them to admins alone. */
+export const EXPENSE_RECEIPT_FOLDER = `${ROOT}/expenses/receipts`;
+export function isExpenseReceipt(storedId: string): boolean {
+  if (!/^(raw|image):/.test(storedId)) return false;
+  const { publicId } = parseStoredId(storedId);
+  return publicId.startsWith(`${EXPENSE_RECEIPT_FOLDER}/`) && !publicId.includes("..");
+}
+
 export function projectFolder(projectId: string, purpose: UploadPurpose): string {
   return `${ROOT}/projects/${projectId}/${purpose}`;
 }
