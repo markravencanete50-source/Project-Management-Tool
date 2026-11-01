@@ -7,6 +7,8 @@ import { run, UserError } from "@/server/action";
 import { col } from "@/server/data/refs";
 import { logActivity } from "@/server/activity";
 import { newProjectFields } from "@/lib/engagement";
+import { endDateForStatus } from "@/lib/billing";
+import { todayIso } from "@/lib/dates";
 import {
   projectCreateSchema,
   projectStatusSchema,
@@ -15,7 +17,7 @@ import {
   tasksUpdateSchema,
   type ProjectCreateOutput,
 } from "@/lib/validation/projects";
-import type { ActionResult } from "@/lib/types";
+import { isFlatUnit, type ActionResult } from "@/lib/types";
 
 export async function createProject(input: unknown): Promise<ActionResult<{ id: string }>> {
   return run(async () => {
@@ -62,7 +64,13 @@ export async function updateProject(projectId: string, input: unknown): Promise<
           : kind === "tasks"
             ? tasksUpdateSchema.parse(input)
             : projectUpdateSchema.parse(input);
-      tx.update(ref, { ...data, updatedAt: FieldValue.serverTimestamp() });
+      const extra: Record<string, unknown> = {};
+      if (kind === "retainer" && "endDate" in data && data.endDate !== undefined) {
+        // An end date the owner typed or changed is theirs: it is never auto-cleared.
+        const unchanged = (snap.data()?.endDate ?? null) === data.endDate;
+        extra.endDateAuto = unchanged ? Boolean(snap.data()?.endDateAuto) : false;
+      }
+      tx.update(ref, { ...data, ...extra, updatedAt: FieldValue.serverTimestamp() });
       logActivity(tx, {
         type: "project.updated",
         message: `Project details updated: ${data.title}`,
@@ -87,7 +95,12 @@ export async function changeProjectStatus(projectId: string, status: unknown): P
       if (!snap.exists) throw new UserError("Project not found");
       const current = snap.data();
       if (current?.status === next) return;
-      tx.update(ref, { status: next, updatedAt: FieldValue.serverTimestamp() });
+      // Flat (week/month) retainers stop billing when put on hold or completed.
+      const endFields =
+        current?.kind === "retainer" && isFlatUnit(current.rateUnit)
+          ? endDateForStatus(next, { endDate: current.endDate ?? null, endDateAuto: Boolean(current.endDateAuto) }, todayIso())
+          : null;
+      tx.update(ref, { status: next, ...(endFields ?? {}), updatedAt: FieldValue.serverTimestamp() });
       logActivity(tx, {
         type: "project.status",
         message: `Status changed from ${String(current?.status)} to ${next}`,

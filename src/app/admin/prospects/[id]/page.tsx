@@ -16,7 +16,7 @@ import { formatInstant, formatIsoDate, todayIso } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { KindBadge } from "@/components/common/kind-badge";
 import { estimatedValueLabel } from "@/lib/engagement";
-import { UNIT_LABELS } from "@/lib/billing";
+import { fromHundredths, UNIT_LABELS } from "@/lib/billing";
 import { formatEstimate } from "@/components/prospects/labels";
 import { getConvertedLinks, getProspect, getProspectActivity } from "@/server/data/prospects";
 
@@ -124,6 +124,16 @@ export default async function ProspectPage({ params }: PageProps<"/admin/prospec
                     </span>
                   </DetailItem>
                 ) : null}
+                {prospect.engagementKind === "retainer" && prospect.rateUnit ? (
+                  <DetailItem label="Working schedule">
+                    {fromHundredths(prospect.hoursPerDay)} h/day, {fromHundredths(prospect.daysPerMonth)} days/month
+                  </DetailItem>
+                ) : null}
+                {prospect.engagementKind === "tasks" && prospect.rate > 0 ? (
+                  <DetailItem label="Default price per task">
+                    <span className="font-semibold tabular-nums">{formatMoney(prospect.rate, prospect.currency)}</span>
+                  </DetailItem>
+                ) : null}
                 <DetailItem label="Next follow-up">
                   {prospect.nextFollowUp ? formatIsoDate(prospect.nextFollowUp) : <span className="text-muted-foreground">None</span>}
                 </DetailItem>
@@ -210,7 +220,9 @@ export default async function ProspectPage({ params }: PageProps<"/admin/prospec
                     ? "Create a client (or reuse one with the same email) and a draft project."
                     : prospect.engagementKind === "retainer"
                       ? "Create a client (or reuse one with the same email) and an active retainer at this rate."
-                      : "Create a client (or reuse one with the same email) and an active task project."}
+                      : prospect.rate > 0
+                        ? "Create a client (or reuse one with the same email) and an active task project with this default price per task."
+                        : "Create a client (or reuse one with the same email) and an active task project."}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">

@@ -234,7 +234,7 @@ describe("validation", () => {
     expect(projectCreateSchema.parse({ ...common, kind: "retainer", rateUnit: "day", rate: "180" })).toMatchObject({ kind: "retainer", rateUnit: "day", rate: 18000 });
     expect(projectCreateSchema.parse({ ...common, kind: "tasks" })).toMatchObject({ kind: "tasks" });
     expect(projectCreateSchema.safeParse({ ...common, kind: "retainer", rateUnit: "day", rate: "0" }).success).toBe(false);
-    expect(projectCreateSchema.safeParse({ ...common, kind: "retainer", rateUnit: "week", rate: "5" }).success).toBe(false);
+    expect(projectCreateSchema.safeParse({ ...common, kind: "retainer", rateUnit: "year", rate: "5" }).success).toBe(false);
     expect(projectCreateSchema.safeParse({ ...common, kind: "fixed" }).success).toBe(false);
   });
   it("lets a retainer change its rate on edit", () => {

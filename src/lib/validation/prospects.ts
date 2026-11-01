@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { CURRENCIES, toMinor } from "@/lib/money";
 import { isoDateSchema } from "@/lib/dates";
+import { DEFAULT_DAYS_PER_MONTH, DEFAULT_HOURS_PER_DAY } from "@/lib/engagement";
+import { daysPerMonthField, hoursPerDayField } from "@/lib/validation/projects";
 import { LOST_REASONS, PROJECT_KINDS, PROSPECT_SOURCES, PROSPECT_STAGES, RATE_UNITS } from "@/lib/types";
 
 const emailField = z
@@ -35,7 +37,8 @@ const followUpField = z
 /**
  * Form input: every field is a string as typed. Output has estimatedValue in
  * minor units. The engagement kind decides which extra fields apply: a
- * retainer needs a rate and a unit, the other kinds store no rate.
+ * retainer needs a rate and a unit, a tasks prospect may have a default price
+ * per task (rate, optional, no unit), fixed stores no rate.
  */
 export const prospectInputSchema = z
   .object({
@@ -49,6 +52,8 @@ export const prospectInputSchema = z
     currency: z.enum(CURRENCIES),
     rateUnit: z.enum(RATE_UNITS),
     rate: moneyField,
+    hoursPerDay: hoursPerDayField.optional(),
+    daysPerMonth: daysPerMonthField.optional(),
     nextFollowUp: followUpField,
     notes: z.string().max(10000),
   })
@@ -59,8 +64,10 @@ export const prospectInputSchema = z
   })
   .transform((v) => ({
     ...v,
-    rate: v.engagementKind === "retainer" ? v.rate : 0,
+    rate: v.engagementKind === "retainer" || v.engagementKind === "tasks" ? v.rate : 0,
     rateUnit: v.engagementKind === "retainer" ? v.rateUnit : null,
+    hoursPerDay: v.engagementKind === "retainer" ? (v.hoursPerDay ?? DEFAULT_HOURS_PER_DAY) : DEFAULT_HOURS_PER_DAY,
+    daysPerMonth: v.engagementKind === "retainer" ? (v.daysPerMonth ?? DEFAULT_DAYS_PER_MONTH) : DEFAULT_DAYS_PER_MONTH,
   }));
 export type ProspectFormValues = z.input<typeof prospectInputSchema>;
 export type ProspectInput = z.output<typeof prospectInputSchema>;

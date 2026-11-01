@@ -214,7 +214,7 @@ try {
     [`/admin/clients/${IDS.clientA}`, ["Alice Anders", "Acme Website Rebuild"]],
     ["/admin/projects", ["Acme Website Rebuild", "Beta Portal Build", "Acme Draft Brochure", "Acme Support Retainer", "Beta Task Support", "Retainer", "All kinds"]],
     ["/admin/projects/new", ["What kind of work is this?", "Fixed", "Retainer", "Tasks"]],
-    ["/admin/projects/new?kind=retainer", ["Rate per hour", "End date (optional)"]],
+    ["/admin/projects/new?kind=retainer", ["Rate per hour", "Last day of service, optional", "Working schedule"]],
     ["/admin/projects/new?kind=tasks", ["Add priced tasks after creating the project"]],
     [`/admin/projects/${IDS.projA1}`, ["Acme Website Rebuild", "Design approved"]],
     [`/admin/projects/${IDS.projA1}?tab=overview`, ["Design approved", "Build complete"]],

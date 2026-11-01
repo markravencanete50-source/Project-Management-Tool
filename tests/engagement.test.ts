@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { estimatedValueLabel, newProjectFields, normalizeProspectEngagement, prospectProjectInput, valueSuffix } from "@/lib/engagement";
 import { prospectInputSchema } from "@/lib/validation/prospects";
+import { projectCreateSchema, tasksUpdateSchema } from "@/lib/validation/projects";
 import { projectFromDoc, prospectFromDoc } from "@/server/data/convert";
 import { tabsFor } from "@/components/projects-core/tab-values";
 import type { DocumentSnapshot } from "firebase-admin/firestore";
@@ -27,6 +28,10 @@ describe("new project fields by kind", () => {
       contractValue: 250000,
       rate: 0,
       rateUnit: null,
+      endDate: null,
+      endDateAuto: false,
+      hoursPerDay: 800,
+      daysPerMonth: 2200,
       revisionAllowance: 2,
     });
   });
@@ -57,12 +62,13 @@ describe("kind defaults for old documents", () => {
   it("a prospect with no kind is a fixed prospect", () => {
     const p = prospectFromDoc(snap({ name: "Old", estimatedValue: 900, currency: "GBP" }));
     expect(p).toMatchObject({ engagementKind: "fixed", rate: 0, rateUnit: null, estimatedValue: 900 });
-    expect(normalizeProspectEngagement({})).toEqual({ engagementKind: "fixed", rate: 0, rateUnit: null });
+    expect(normalizeProspectEngagement({})).toEqual({ engagementKind: "fixed", rate: 0, rateUnit: null, hoursPerDay: 800, daysPerMonth: 2200 });
   });
-  it("only retainer prospects keep a rate", () => {
-    expect(normalizeProspectEngagement({ engagementKind: "tasks", rate: 500, rateUnit: "day" })).toEqual({ engagementKind: "tasks", rate: 0, rateUnit: null });
-    expect(normalizeProspectEngagement({ engagementKind: "retainer", rate: 500, rateUnit: "day" })).toEqual({ engagementKind: "retainer", rate: 500, rateUnit: "day" });
-    expect(normalizeProspectEngagement({ engagementKind: "retainer" })).toEqual({ engagementKind: "retainer", rate: 0, rateUnit: "hour" });
+  it("only retainer and tasks prospects keep a rate, and only retainers keep a unit", () => {
+    expect(normalizeProspectEngagement({ engagementKind: "tasks", rate: 500, rateUnit: "day" })).toEqual({ engagementKind: "tasks", rate: 500, rateUnit: null, hoursPerDay: 800, daysPerMonth: 2200 });
+    expect(normalizeProspectEngagement({ engagementKind: "fixed", rate: 500, rateUnit: "day" })).toEqual({ engagementKind: "fixed", rate: 0, rateUnit: null, hoursPerDay: 800, daysPerMonth: 2200 });
+    expect(normalizeProspectEngagement({ engagementKind: "retainer", rate: 500, rateUnit: "day" })).toEqual({ engagementKind: "retainer", rate: 500, rateUnit: "day", hoursPerDay: 800, daysPerMonth: 2200 });
+    expect(normalizeProspectEngagement({ engagementKind: "retainer" })).toEqual({ engagementKind: "retainer", rate: 0, rateUnit: "hour", hoursPerDay: 800, daysPerMonth: 2200 });
   });
   it("project tabs depend on the kind, and fixed keeps its original five", () => {
     expect(tabsFor("fixed").map((t) => t.value)).toEqual(["overview", "payments", "agreement", "revisions", "activity"]);
@@ -89,6 +95,10 @@ describe("converting a prospect creates a project of the same kind", () => {
       contractValue: 400000,
       rate: 0,
       rateUnit: null,
+      endDate: null,
+      endDateAuto: false,
+      hoursPerDay: 800,
+      daysPerMonth: 2200,
       revisionAllowance: 3,
     });
   });
@@ -110,6 +120,15 @@ describe("converting a prospect creates a project of the same kind", () => {
   it("tasks: active with no rate and no contract value", () => {
     const input = prospectProjectInput({ ...prospect, engagementKind: "tasks", rate: 0, rateUnit: null }, "c9", 3);
     expect(newProjectFields(input, NOW)).toMatchObject({ kind: "tasks", status: "active", rate: 0, rateUnit: null, contractValue: 0 });
+  });
+  it("tasks: the prospect's default price per task becomes the project rate, with no unit", () => {
+    const input = prospectProjectInput({ ...prospect, engagementKind: "tasks", rate: 50000, rateUnit: null }, "c9", 3);
+    expect(input.rate).toBe(50000);
+    expect(newProjectFields(input, NOW)).toMatchObject({ kind: "tasks", rate: 50000, rateUnit: null, contractValue: 0 });
+  });
+  it("fixed ignores a stray prospect rate", () => {
+    const input = prospectProjectInput({ ...prospect, engagementKind: "fixed", rate: 50000, rateUnit: null }, "c9", 3);
+    expect(newProjectFields(input, NOW)).toMatchObject({ rate: 0, rateUnit: null });
   });
   it("falls back to a generic title", () => {
     const input = prospectProjectInput({ ...prospect, service: "   ", engagementKind: "tasks", rate: 0, rateUnit: null }, "c9", 3);
@@ -140,6 +159,47 @@ describe("prospect form schema", () => {
     const r = prospectInputSchema.safeParse({ ...base, engagementKind: "retainer", rateUnit: "hour", rate: "" });
     expect(r.success).toBe(false);
     expect(r.error?.issues[0]?.path).toEqual(["rate"]);
+  });
+});
+
+describe("default price per task", () => {
+  const base = { clientId: "c1", title: "Jobs", description: "", currency: "PHP", startDate: "", deadline: "" };
+
+  it("new tasks project stores the rate, blank or missing means none", () => {
+    const fields = (rate?: string) => {
+      const parsed = projectCreateSchema.parse({ ...base, kind: "tasks", ...(rate === undefined ? {} : { rate }) }) as { rate?: number };
+      return newProjectFields({ ...base, kind: "tasks", currency: "PHP", startDate: null, deadline: null, rate: parsed.rate }, NOW);
+    };
+    expect(fields("500")).toMatchObject({ rate: 50000, rateUnit: null });
+    expect(fields("499.5")).toMatchObject({ rate: 49950 });
+    expect(fields("")).toMatchObject({ rate: 0, rateUnit: null });
+    expect(fields("0")).toMatchObject({ rate: 0 });
+    expect(fields()).toMatchObject({ rate: 0 });
+  });
+  it("rejects a negative or malformed default price", () => {
+    expect(projectCreateSchema.safeParse({ ...base, kind: "tasks", rate: "-5" }).success).toBe(false);
+    const bad = projectCreateSchema.safeParse({ ...base, kind: "tasks", rate: "abc" });
+    expect(bad.success).toBe(false);
+    expect(bad.error?.issues[0]?.path).toEqual(["rate"]);
+  });
+  it("fixed still never stores a rate, and retainer still requires one", () => {
+    const fixed = projectCreateSchema.parse({ ...base, kind: "fixed", contractValue: "100", revisionAllowance: "2", rate: "500" });
+    expect(fixed).not.toHaveProperty("rate");
+    expect(projectCreateSchema.safeParse({ ...base, kind: "retainer", rateUnit: "hour", rate: "" }).success).toBe(false);
+    expect(projectCreateSchema.safeParse({ ...base, kind: "retainer", rateUnit: "hour", rate: "0" }).success).toBe(false);
+  });
+  it("edit accepts the default, blank clears it, and omitting it leaves it alone", () => {
+    const edit = { title: "Jobs", description: "", startDate: "", deadline: "" };
+    expect(tasksUpdateSchema.parse({ ...edit, rate: "250.50" }).rate).toBe(25050);
+    expect(tasksUpdateSchema.parse({ ...edit, rate: "" }).rate).toBe(0);
+    expect(tasksUpdateSchema.parse(edit)).not.toHaveProperty("rate");
+    expect(tasksUpdateSchema.safeParse({ ...edit, rate: "-1" }).success).toBe(false);
+  });
+  it("tasks prospect keeps an optional rate with no unit", () => {
+    const base2 = { name: "Nina", company: "", email: "", source: "other", service: "", estimatedValue: "", currency: "PHP", nextFollowUp: "", notes: "", rateUnit: "hour" };
+    expect(prospectInputSchema.parse({ ...base2, engagementKind: "tasks", rate: "500" })).toMatchObject({ rate: 50000, rateUnit: null });
+    expect(prospectInputSchema.parse({ ...base2, engagementKind: "tasks", rate: "" })).toMatchObject({ rate: 0, rateUnit: null });
+    expect(prospectInputSchema.safeParse({ ...base2, engagementKind: "tasks", rate: "-1" }).success).toBe(false);
   });
 });
 

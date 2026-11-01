@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,9 @@ import { useAction } from "@/components/common/use-action";
 import { LabeledSelect } from "@/components/prospects/labeled-select";
 import { SOURCE_LABELS, toItems } from "@/components/prospects/labels";
 import { KindPicker } from "@/components/common/kind-picker";
-import { estimatedValueLabel } from "@/lib/engagement";
+import { RetainerSchedule } from "@/components/projects-core/retainer-schedule";
+import { fromHundredths } from "@/lib/billing";
+import { DEFAULT_DAYS_PER_MONTH, DEFAULT_HOURS_PER_DAY, estimatedValueLabel, expectedFromInputs } from "@/lib/engagement";
 import { CURRENCIES, fromMinor } from "@/lib/money";
 import { prospectInputSchema, type ProspectFormValues, type ProspectInput } from "@/lib/validation/prospects";
 import { createProspect, updateProspect } from "@/server/actions/prospects";
@@ -22,6 +24,8 @@ const CURRENCY_ITEMS = CURRENCIES.map((c) => ({ value: c, label: c }));
 const UNIT_ITEMS: { value: RateUnit; label: string }[] = [
   { value: "hour", label: "Per hour" },
   { value: "day", label: "Per day" },
+  { value: "week", label: "Per week" },
+  { value: "month", label: "Per month" },
 ];
 
 function defaults(p?: Prospect): ProspectFormValues {
@@ -36,6 +40,8 @@ function defaults(p?: Prospect): ProspectFormValues {
     currency: p?.currency ?? "USD",
     rateUnit: p?.rateUnit ?? "hour",
     rate: p && p.rate ? fromMinor(p.rate) : "",
+    hoursPerDay: fromHundredths(p?.hoursPerDay ?? DEFAULT_HOURS_PER_DAY),
+    daysPerMonth: fromHundredths(p?.daysPerMonth ?? DEFAULT_DAYS_PER_MONTH),
     nextFollowUp: p?.nextFollowUp ?? "",
     notes: p?.notes ?? "",
   };
@@ -61,6 +67,24 @@ export function ProspectForm({
   const kind = useWatch({ control, name: "engagementKind" });
   const unit = useWatch({ control, name: "rateUnit" });
   const monthly = kind === "retainer";
+  const currency = useWatch({ control, name: "currency" });
+  const rateText = useWatch({ control, name: "rate" }) ?? "";
+  const hoursText = useWatch({ control, name: "hoursPerDay" }) ?? "";
+  const daysText = useWatch({ control, name: "daysPerMonth" }) ?? "";
+
+  // Prefill the monthly value from the working schedule while it is empty or still the
+  // last figure we filled in. A value the owner typed or changed is never overwritten.
+  const lastAuto = useRef<string | null>(null);
+  const expected = monthly ? expectedFromInputs(unit, rateText, hoursText, daysText) : null;
+  const expectedText = expected ? fromMinor(expected.monthly) : null;
+  useEffect(() => {
+    if (expectedText === null) return;
+    const current = form.getValues("estimatedValue");
+    if (current === "" || current === lastAuto.current) {
+      form.setValue("estimatedValue", expectedText);
+      lastAuto.current = expectedText;
+    }
+  }, [expectedText, form]);
 
   // The server parses the raw strings again; the resolver only gives instant feedback.
   const onSubmit = form.handleSubmit(() => {
@@ -139,7 +163,9 @@ export function ProspectForm({
               aria-invalid={!!errors.estimatedValue}
               {...register("estimatedValue")}
             />
-            {monthly ? <p className="text-xs text-muted-foreground">Shown as an amount per month (/mo).</p> : null}
+            {monthly ? (
+              <p className="text-xs text-muted-foreground">Shown as an amount per month (/mo). Filled in from your working schedule; type over it to change it.</p>
+            ) : null}
             <FieldError errors={[errors.estimatedValue]} />
           </Field>
           <Field>
@@ -184,7 +210,37 @@ export function ProspectForm({
               />
               <FieldError errors={[errors.rate]} />
             </Field>
+            <div className="sm:col-span-2">
+              <RetainerSchedule
+                idPrefix="p"
+                hoursField={register("hoursPerDay")}
+                daysField={register("daysPerMonth")}
+                hoursError={errors.hoursPerDay}
+                daysError={errors.daysPerMonth}
+                unit={unit}
+                currency={currency}
+                rateText={rateText}
+                hoursText={hoursText}
+                daysText={daysText}
+              />
+            </div>
           </div>
+        ) : null}
+        {kind === "tasks" ? (
+          <Field key="tasks-rate" data-invalid={!!errors.rate} className="enter-fade">
+            <FieldLabel htmlFor="p-task-price">Default price per task ({currency}), optional</FieldLabel>
+            <Input
+              id="p-task-price"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="500.00"
+              className="tabular-nums sm:max-w-52"
+              aria-invalid={!!errors.rate}
+              {...register("rate")}
+            />
+            <p className="text-xs text-muted-foreground">New tasks start at this price. You can change any task&apos;s price.</p>
+            <FieldError errors={[errors.rate]} />
+          </Field>
         ) : null}
       </FormSection>
 

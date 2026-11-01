@@ -45,12 +45,18 @@ export function TasksPanel({
   currency,
   tasks,
   paid,
+  defaultPrice = 0,
+  defaultPriceAction,
 }: {
   projectId: string;
   currency: Currency;
   tasks: PanelTask[];
   /** Total payments received, from the server. */
   paid: number;
+  /** The project's default price per task in minor units. 0 means none. */
+  defaultPrice?: number;
+  /** The edit shortcut shown beside the default price line. */
+  defaultPriceAction?: React.ReactNode;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -102,8 +108,18 @@ export function TasksPanel({
         <SectionHeader
           title="Tasks"
           description="Tick a task when it is finished. The client is billed for it from that moment."
-          actions={<TaskDialog projectId={projectId} currency={currency} />}
+          actions={<TaskDialog projectId={projectId} currency={currency} defaultPrice={defaultPrice} />}
         />
+        <div className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+          {defaultPrice > 0 ? (
+            <span>
+              Default price per task: <span className="font-medium text-foreground tabular-nums">{formatMoney(defaultPrice, currency)}</span>
+            </span>
+          ) : (
+            <span>No default price per task. Set one so new tasks start at it.</span>
+          )}
+          {defaultPriceAction}
+        </div>
         {optimistic.length === 0 ? (
           <Empty className="border">
             <EmptyHeader>

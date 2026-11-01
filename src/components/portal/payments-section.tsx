@@ -4,6 +4,7 @@ import { PaymentsList } from "@/components/payments/payments-list";
 import { ScheduleTable } from "@/components/payments/schedule-table";
 import { PaymentSummary } from "@/components/payments/summary";
 import { getPortalProjectPayments } from "@/server/data/payments";
+import { isFlatUnit } from "@/lib/types";
 
 /** Read-only payments view for the portal. Access is checked by the loader. */
 export async function PortalPaymentsSection({ projectId }: { projectId: string }) {
@@ -11,6 +12,7 @@ export async function PortalPaymentsSection({ projectId }: { projectId: string }
   const { currency } = project;
   const derived = project.kind !== "fixed";
   const retainer = project.kind === "retainer";
+  const flat = retainer && isFlatUnit(project.rateUnit);
 
   return (
     <section className="grid grid-cols-1 gap-6" aria-labelledby="portal-payments-heading">
@@ -30,7 +32,7 @@ export async function PortalPaymentsSection({ projectId }: { projectId: string }
       />
 
       <div className="grid grid-cols-1 gap-3">
-        <h3 className="text-base font-semibold">{retainer ? "Monthly summary" : derived ? "Completed tasks" : "Payment schedule"}</h3>
+        <h3 className="text-base font-semibold">{flat ? (project.rateUnit === "week" ? "Weekly billing" : "Monthly billing") : retainer ? "Monthly summary" : derived ? "Completed tasks" : "Payment schedule"}</h3>
         {finance.lines.length === 0 ? (
           <p className="text-base text-muted-foreground">
             {retainer ? "Nothing has been billed yet." : derived ? "No tasks have been completed yet." : "No payment schedule has been set for this project."}
@@ -39,7 +41,7 @@ export async function PortalPaymentsSection({ projectId }: { projectId: string }
           <ScheduleTable
             lines={finance.lines}
             currency={currency}
-            itemLabel={retainer ? "Month" : derived ? "Task" : "Payment"}
+            itemLabel={flat ? (project.rateUnit === "week" ? "Week" : "Month") : retainer ? "Month" : derived ? "Task" : "Payment"}
             dueLabel={retainer ? "Due" : derived ? "Done on" : "Due"}
           />
         )}

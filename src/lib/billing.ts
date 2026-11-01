@@ -1,4 +1,4 @@
-import { formatMonthKey, isoDateOfInstant, monthKeyOf, type IsoDate, type MonthKey } from "@/lib/dates";
+import { addDaysIso, formatMonthKey, isoDateOfInstant, monthKeyOf, type IsoDate, type MonthKey } from "@/lib/dates";
 import { addMoney, type Currency, type MoneyByCurrency } from "@/lib/money";
 import {
   billsFinance,
@@ -6,7 +6,7 @@ import {
   type BillLine,
   type ProjectFinance,
 } from "@/lib/finance";
-import type { Payment, Project, ProjectKind, RateUnit, ScheduleLine, Task, TimeEntry } from "@/lib/types";
+import { isFlatUnit, type FlatRateUnit, type Payment, type Project, type ProjectKind, type RateUnit, type ScheduleLine, type Task, type TimeEntry } from "@/lib/types";
 
 // Pure maths for the two derived engagement kinds. Nothing here is stored.
 //
@@ -24,6 +24,8 @@ import type { Payment, Project, ProjectKind, RateUnit, ScheduleLine, Task, TimeE
 export const UNIT_LABELS: Record<RateUnit, { singular: string; plural: string; short: string }> = {
   hour: { singular: "hour", plural: "hours", short: "hrs" },
   day: { singular: "day", plural: "days", short: "days" },
+  week: { singular: "week", plural: "weeks", short: "wks" },
+  month: { singular: "month", plural: "months", short: "mos" },
 };
 
 /** "hour" or "hours" for a quantity in hundredths (exactly 1.00 is singular). */
@@ -130,6 +132,102 @@ export function retainerBillLines(entries: TimeInput[], rate: number, unit: Rate
   }));
 }
 
+// ------------------------------------------------- flat week / month retainers
+
+export type FlatPeriod = {
+  /** "2026-11" for a month, the Monday "2026-11-03" for a week. */
+  key: string;
+  /** "Nov 2026" or "Week of 3 Nov 2026" */
+  label: string;
+  /** First day of the period (Monday for a week). */
+  start: IsoDate;
+  /** Last day of the period (Sunday for a week): when the fee falls due. */
+  end: IsoDate;
+};
+
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function dayLabel(date: IsoDate): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return `${d} ${SHORT_MONTHS[m - 1]} ${y}`;
+}
+
+/** The Monday on or before a date (weeks run Monday to Sunday). */
+export function weekStartOf(date: IsoDate): IsoDate {
+  const dow = new Date(`${date}T00:00:00Z`).getUTCDay(); // 0 = Sunday
+  return addDaysIso(date, -((dow + 6) % 7));
+}
+
+/** The earlier of two dates, ignoring nulls. */
+function earliest(a: IsoDate, b: IsoDate | null): IsoDate {
+  return b !== null && b < a ? b : a;
+}
+
+/**
+ * The billing periods of a flat retainer: every month (or Monday to Sunday
+ * week) from the one containing `startDate`, up to and including the last one
+ * that STARTS on or before min(today, endDate). The first period is billed in
+ * full (no proration). Oldest first. No start date, or an end date before the
+ * start, gives no periods.
+ */
+export function periodsBetween(unit: FlatRateUnit, startDate: IsoDate | null, endDate: IsoDate | null, today: IsoDate): FlatPeriod[] {
+  if (!startDate) return [];
+  const limit = earliest(today, endDate);
+  if (limit < startDate) return [];
+  const out: FlatPeriod[] = [];
+  if (unit === "month") {
+    let month = monthKeyOf(startDate);
+    const lastMonth = monthKeyOf(limit);
+    while (month <= lastMonth) {
+      out.push({ key: month, label: formatMonthKey(month), start: `${month}-01`, end: lastDayOfMonth(month) });
+      const [y, m] = month.split("-").map(Number);
+      month = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+    }
+    return out;
+  }
+  for (let start = weekStartOf(startDate); start <= limit; start = addDaysIso(start, 7)) {
+    out.push({ key: start, label: `Week of ${dayLabel(start)}`, start, end: addDaysIso(start, 6) });
+  }
+  return out;
+}
+
+/**
+ * One bill line per period, each worth the full rate and due on the period's
+ * last day. A period that has not ended is inProgress, so it cannot be overdue.
+ */
+export function flatBillLines(
+  unit: FlatRateUnit,
+  rate: number,
+  startDate: IsoDate | null,
+  endDate: IsoDate | null,
+  today: IsoDate,
+): BillLine[] {
+  return periodsBetween(unit, startDate, endDate, today).map((p) => ({
+    id: p.key,
+    label: p.label,
+    amountDue: rate,
+    dueDate: p.end,
+    detail: unit === "week" ? "Weekly fee" : "Monthly fee",
+    inProgress: p.end >= today,
+  }));
+}
+
+/**
+ * The end date to store when the owner changes a flat retainer's status.
+ * on_hold or completed with no end date sets it to today (flagged auto).
+ * Back to active clears an end date only if it was auto-set; a typed one stays.
+ * Other statuses and other cases leave it alone.
+ */
+export function endDateForStatus(
+  next: string,
+  current: { endDate: IsoDate | null; endDateAuto: boolean },
+  today: IsoDate,
+): { endDate: IsoDate | null; endDateAuto: boolean } {
+  if ((next === "on_hold" || next === "completed") && current.endDate === null) return { endDate: today, endDateAuto: true };
+  if (next === "active" && current.endDateAuto) return { endDate: null, endDateAuto: false };
+  return current;
+}
+
 // ------------------------------------------------------------------ tasks
 
 type TaskInput = Pick<Task, "id" | "title" | "price" | "status" | "order" | "doneAt">;
@@ -174,7 +272,7 @@ export function taskTotals(tasks: Pick<Task, "price" | "status">[]): TaskTotals 
 // ----------------------------------------------------------------- finance
 
 export type FinanceInput = {
-  project: Pick<Project, "kind" | "contractValue" | "rate" | "rateUnit">;
+  project: Pick<Project, "kind" | "contractValue" | "rate" | "rateUnit"> & Partial<Pick<Project, "startDate" | "endDate">>;
   schedule: ScheduleLine[];
   entries: TimeInput[];
   tasks: TaskInput[];
@@ -184,10 +282,13 @@ export type FinanceInput = {
 
 /** The derived bill lines for a project (empty for fixed projects, whose lines are stored). */
 export function derivedBillLines(
-  project: Pick<Project, "kind" | "rate" | "rateUnit">,
+  project: Pick<Project, "kind" | "rate" | "rateUnit"> & Partial<Pick<Project, "startDate" | "endDate">>,
   data: { entries: TimeInput[]; tasks: TaskInput[] },
   today: IsoDate,
 ): BillLine[] {
+  if (project.kind === "retainer" && isFlatUnit(project.rateUnit)) {
+    return flatBillLines(project.rateUnit, project.rate, project.startDate ?? null, project.endDate ?? null, today);
+  }
   if (project.kind === "retainer") return retainerBillLines(data.entries, project.rate, project.rateUnit ?? "hour", today);
   if (project.kind === "tasks") return taskBillLines(data.tasks);
   return [];

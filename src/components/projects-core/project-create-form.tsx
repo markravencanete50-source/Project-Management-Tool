@@ -8,17 +8,20 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SimpleSelect } from "@/components/projects-core/simple-select";
+import { RetainerSchedule } from "@/components/projects-core/retainer-schedule";
 import { KindPicker } from "@/components/common/kind-picker";
 import { useAction } from "@/components/common/use-action";
 import { createProject } from "@/server/actions/projects";
 import { projectCreateSchema } from "@/lib/validation/projects";
 import { CURRENCIES, type Currency } from "@/lib/money";
-import type { ProjectKind, RateUnit } from "@/lib/types";
+import { isFlatUnit, type ProjectKind, type RateUnit } from "@/lib/types";
 
 const CURRENCY_OPTIONS = CURRENCIES.map((c) => ({ value: c, label: c }));
 const UNIT_OPTIONS: { value: RateUnit; label: string }[] = [
   { value: "hour", label: "Per hour" },
   { value: "day", label: "Per day" },
+  { value: "week", label: "Per week" },
+  { value: "month", label: "Per month" },
 ];
 
 export type ClientChoice = { id: string; name: string; company: string; defaultCurrency: Currency };
@@ -34,8 +37,11 @@ type FormValues = {
   revisionAllowance: string;
   rateUnit: RateUnit;
   rate: string;
+  hoursPerDay: string;
+  daysPerMonth: string;
   startDate: string;
   deadline: string;
+  endDate: string;
 };
 
 /** Validate with the same schema the server uses, mapping issues onto form fields. */
@@ -78,8 +84,11 @@ export function ProjectCreateForm({
       revisionAllowance: String(defaultRevisionAllowance),
       rateUnit: "hour",
       rate: "",
+      hoursPerDay: "8",
+      daysPerMonth: "22",
       startDate: "",
       deadline: "",
+      endDate: "",
     },
   });
   const { register, control, handleSubmit, setValue, formState } = form;
@@ -87,6 +96,10 @@ export function ProjectCreateForm({
 
   const clientOptions = clients.map((c) => ({ value: c.id, label: c.company ? `${c.name} (${c.company})` : c.name }));
   const unit = useWatch({ control, name: "rateUnit" });
+  const currency = useWatch({ control, name: "currency" });
+  const rateText = useWatch({ control, name: "rate" }) ?? "";
+  const hoursText = useWatch({ control, name: "hoursPerDay" }) ?? "";
+  const daysText = useWatch({ control, name: "daysPerMonth" }) ?? "";
 
   function chooseKind(next: ProjectKind) {
     setKind(next);
@@ -221,15 +234,47 @@ export function ProjectCreateForm({
                 <FieldError errors={[errors.rate]} />
               </Field>
               <p className="text-sm text-muted-foreground sm:col-span-2">
-                You log time against this rate. Each month is billed in arrears and falls due on its last day. There is no agreement step.
+                {isFlatUnit(unit)
+                  ? `Billed automatically every ${unit} at this flat rate, with no time logging. The first ${unit} is charged in full (no proration). Each ${unit} falls due on its last day. Billing stops at the last day of service. There is no agreement step.`
+                  : "You log time against this rate. Each month is billed in arrears and falls due on its last day. There is no agreement step."}
               </p>
+              <div className="sm:col-span-2">
+                <RetainerSchedule
+                  idPrefix="project"
+                  hoursField={register("hoursPerDay")}
+                  daysField={register("daysPerMonth")}
+                  hoursError={errors.hoursPerDay}
+                  daysError={errors.daysPerMonth}
+                  unit={unit}
+                  currency={currency}
+                  rateText={rateText}
+                  hoursText={hoursText}
+                  daysText={daysText}
+                />
+              </div>
             </div>
           ) : null}
 
           {kind === "tasks" ? (
-            <p className="text-sm text-muted-foreground">
-              Add priced tasks after creating the project. A task is owed the moment you mark it done. There is no agreement step.
-            </p>
+            <>
+              <Field data-invalid={Boolean(errors.rate)}>
+                <FieldLabel htmlFor="project-task-price">Default price per task ({currency}), optional</FieldLabel>
+                <Input
+                  id="project-task-price"
+                  inputMode="decimal"
+                  placeholder="500.00"
+                  autoComplete="off"
+                  className="tabular-nums sm:max-w-52"
+                  aria-invalid={Boolean(errors.rate)}
+                  {...register("rate")}
+                />
+                <FieldDescription>New tasks start at this price. You can change any task&apos;s price.</FieldDescription>
+                <FieldError errors={[errors.rate]} />
+              </Field>
+              <p className="text-sm text-muted-foreground">
+                Add priced tasks after creating the project. A task is owed the moment you mark it done. There is no agreement step.
+              </p>
+            </>
           ) : null}
         </div>
 
@@ -240,11 +285,20 @@ export function ProjectCreateForm({
             {kind !== "fixed" ? <FieldDescription>Defaults to today. The project counts as accepted on this date.</FieldDescription> : null}
             <FieldError errors={[errors.startDate]} />
           </Field>
-          <Field data-invalid={Boolean(errors.deadline)}>
-            <FieldLabel htmlFor="project-deadline">{kind === "retainer" ? "End date (optional)" : "Deadline"}</FieldLabel>
-            <Input id="project-deadline" type="date" {...register("deadline")} />
-            <FieldError errors={[errors.deadline]} />
-          </Field>
+          {kind === "retainer" ? (
+            <Field data-invalid={Boolean(errors.endDate)}>
+              <FieldLabel htmlFor="project-end">Last day of service, optional</FieldLabel>
+              <Input id="project-end" type="date" {...register("endDate")} />
+              {isFlatUnit(unit) ? <FieldDescription>Week and month billing stops after this day. Leave blank while it is ongoing.</FieldDescription> : null}
+              <FieldError errors={[errors.endDate]} />
+            </Field>
+          ) : (
+            <Field data-invalid={Boolean(errors.deadline)}>
+              <FieldLabel htmlFor="project-deadline">Deadline</FieldLabel>
+              <Input id="project-deadline" type="date" {...register("deadline")} />
+              <FieldError errors={[errors.deadline]} />
+            </Field>
+          )}
         </div>
       </FieldGroup>
 

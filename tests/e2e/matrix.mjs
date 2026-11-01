@@ -62,6 +62,50 @@ export async function runMatrix({ browser, base, cookies, ids, shots, host }) {
     ["tasks-tasks", `/admin/projects/${ids.projT1}?tab=tasks`],
     ["tasks-payments", `/admin/projects/${ids.projT1}?tab=payments`],
     ["settings", "/admin/settings"],
+    // Screenshots for the default task price, flat retainers and working schedule (filter: E2E_SHOTS=wc-).
+    ["wc-project-new-tasks", "/admin/projects/new?kind=tasks"],
+    [
+      "wc-project-new-retainer-schedule",
+      "/admin/projects/new?kind=retainer",
+      async (page) => {
+        await page.getByLabel("Rate per hour").fill("25");
+        await page.getByLabel("Hours per day").fill("6");
+        await page.getByLabel("Days per month").fill("20");
+        await page.waitForTimeout(400);
+      },
+    ],
+    [
+      "wc-project-new-retainer-month",
+      "/admin/projects/new?kind=retainer",
+      async (page) => {
+        await page.locator("#project-unit").click();
+        await page.getByRole("option", { name: "Per month" }).click();
+        await page.getByLabel("Rate per month").fill("1200");
+        await page.waitForTimeout(400);
+      },
+    ],
+    [
+      "wc-task-dialog-prefilled",
+      `/admin/projects/${ids.projT1}?tab=tasks`,
+      async (page) => {
+        await page.getByRole("button", { name: "Add task" }).first().click();
+        await page.waitForTimeout(500);
+      },
+    ],
+    ["wc-tasks-tab", `/admin/projects/${ids.projT1}?tab=tasks`],
+    [
+      "wc-tasks-edit-default",
+      `/admin/projects/${ids.projT1}?tab=tasks`,
+      async (page) => {
+        await page.getByRole("button", { name: "Change" }).first().click();
+        await page.waitForTimeout(500);
+      },
+    ],
+    ["wc-meter-time-tab", `/admin/projects/${ids.projR1}?tab=time`],
+    ["wc-periods-tab", "/admin/projects/proj-a-flat-month?tab=periods"],
+    ["wc-periods-overview", "/admin/projects/proj-a-flat-month"],
+    ["wc-prospect-new-retainer", "/admin/prospects", newProspectDialog("Retainer")],
+    ["wc-prospect-new-tasks", "/admin/prospects", newProspectDialog("Tasks")],
   ];
   const portalPages = [
     ["portal-home", "/portal"],

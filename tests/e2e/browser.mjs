@@ -363,20 +363,106 @@ export async function runBrowser({ base, cookies, ids, check }) {
       return act.docs.some((d) => d.get("type") === "payment.recorded" && d.get("visibility") === "client") || "payment activity missing";
     });
 
+    await check("UI: an hourly retainer with a working schedule shows expected earnings, a prefilled time entry and the meter", async () => {
+      await admin.goto(`${base}/admin/projects/new?clientId=${carolId}`, { waitUntil: "networkidle" });
+      await admin.getByRole("radio", { name: /^Retainer/ }).click();
+      await admin.getByLabel("Title").fill("Carol Scheduled Support");
+      await admin.getByLabel("Rate per hour").fill("25");
+      await admin.getByLabel("Hours per day").fill("6");
+      await admin.getByLabel("Days per month").fill("20");
+      await admin.getByText("Expected per month:").first().waitFor({ timeout: 5000 });
+      const form = await admin.evaluate(() => document.body.innerText);
+      if (!form.includes("3,000.00")) return "expected per month should be 3,000.00 (25 x 6 x 20)";
+      await admin.getByRole("button", { name: "Create project" }).click();
+      await admin.waitForURL(/\/admin\/projects\/[^/?]+$/, { timeout: 15000 });
+      const id = admin.url().split("/").pop();
+      const doc = await db.collection("projects").doc(id).get();
+      if (doc.get("hoursPerDay") !== 600 || doc.get("daysPerMonth") !== 2000) return `schedule ${doc.get("hoursPerDay")} ${doc.get("daysPerMonth")}`;
+      await admin.goto(`${base}/admin/projects/${id}?tab=time`, { waitUntil: "networkidle" });
+      await admin.getByRole("button", { name: "Log time" }).first().click();
+      const qty = await admin.getByLabel("Hours").inputValue();
+      if (qty !== "6") return `time entry should prefill 6 hours, got "${qty}"`;
+      await admin.getByRole("dialog").getByRole("button", { name: "Log time" }).click();
+      await admin.getByText("In progress").first().waitFor({ timeout: 15000 });
+      const text = await admin.evaluate(() => document.body.innerText);
+      return text.includes("of 120 expected hours") || "meter should read 6 of 120 expected hours";
+    });
+
+    await check("UI: a per-month retainer started two months ago bills three periods, with payment states", async () => {
+      const twoAgo = (() => {
+        const d = new Date(`${firstOfThis}T00:00:00Z`);
+        d.setUTCMonth(d.getUTCMonth() - 2);
+        return `${d.toISOString().slice(0, 8)}10`;
+      })();
+      await admin.goto(`${base}/admin/projects/new?clientId=${carolId}`, { waitUntil: "networkidle" });
+      await admin.getByRole("radio", { name: /^Retainer/ }).click();
+      await admin.getByLabel("Title").fill("Carol Monthly Flat");
+      await admin.locator("#project-unit").click();
+      await admin.getByRole("option", { name: "Per month" }).click();
+      await admin.getByLabel("Rate per month").fill("500");
+      await admin.locator("#project-start").fill(twoAgo);
+      await admin.getByRole("button", { name: "Create project" }).click();
+      await admin.waitForURL(/\/admin\/projects\/[^/?]+$/, { timeout: 15000 });
+      const id = admin.url().split("/").pop();
+      const doc = await db.collection("projects").doc(id).get();
+      if (doc.get("rateUnit") !== "month" || doc.get("rate") !== 50000) return `unit ${doc.get("rateUnit")} rate ${doc.get("rate")}`;
+      await admin.goto(`${base}/admin/projects/${id}?tab=periods`, { waitUntil: "networkidle" });
+      let text = await admin.evaluate(() => document.body.innerText);
+      if (!text.includes("1,500.00") && !text.includes("1500.00")) return "three months at 500.00 should be billed as 1,500.00";
+      if ((text.match(/500\.00/g) ?? []).length < 3) return "expected three 500.00 periods";
+      await admin.goto(`${base}/admin/projects/${id}?tab=payments`, { waitUntil: "networkidle" });
+      await admin.getByRole("button", { name: "Add payment" }).first().click();
+      await admin.getByLabel(/^Amount/).fill("700");
+      await admin.getByRole("button", { name: "Record payment" }).click();
+      await admin.getByText("Overdue", { exact: true }).first().waitFor({ timeout: 15000 });
+      await admin.waitForTimeout(1000);
+      text = await admin.evaluate(() => document.body.innerText);
+      for (const needle of ["Paid", "Overdue", "In progress"]) if (!text.includes(needle)) return `missing ${needle}`;
+      const tabs = await admin.getByRole("tab", { name: "Billing periods" }).count();
+      return tabs > 0 || "Billing periods tab missing";
+    });
+
+    await check("UI: a per-week retainer lists its weekly periods", async () => {
+      const startDate = (() => {
+        const d = new Date(`${today}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() - 15);
+        return d.toISOString().slice(0, 10);
+      })();
+      await admin.goto(`${base}/admin/projects/new?clientId=${carolId}`, { waitUntil: "networkidle" });
+      await admin.getByRole("radio", { name: /^Retainer/ }).click();
+      await admin.getByLabel("Title").fill("Carol Weekly Flat");
+      await admin.locator("#project-unit").click();
+      await admin.getByRole("option", { name: "Per week" }).click();
+      await admin.getByLabel("Rate per week").fill("100");
+      await admin.locator("#project-start").fill(startDate);
+      await admin.getByRole("button", { name: "Create project" }).click();
+      await admin.waitForURL(/\/admin\/projects\/[^/?]+$/, { timeout: 15000 });
+      const id = admin.url().split("/").pop();
+      await admin.goto(`${base}/admin/projects/${id}?tab=periods`, { waitUntil: "networkidle" });
+      const text = await admin.evaluate(() => document.body.innerText);
+      return (text.match(/Week of /g) ?? []).length >= 3 || "expected at least three weekly periods";
+    });
+
     await check("UI: create a tasks project, add tasks, tick one done, record a payment", async () => {
       await admin.goto(`${base}/admin/projects/new?clientId=${carolId}`, { waitUntil: "networkidle" });
       await admin.getByRole("radio", { name: /^Tasks/ }).click();
       await admin.getByLabel("Title").fill("Carol Small Jobs");
+      await admin.getByLabel(/^Default price per task/).fill("150");
       await admin.getByRole("button", { name: "Create project" }).click();
       await admin.waitForURL(/\/admin\/projects\/[^/?]+$/, { timeout: 15000 });
       tasksId = admin.url().split("/").pop();
       const doc = await db.collection("projects").doc(tasksId).get();
       if (doc.get("kind") !== "tasks" || doc.get("status") !== "active" || !doc.get("acceptedAt")) return `project ${doc.get("kind")} ${doc.get("status")}`;
+      if (doc.get("rate") !== 15000 || doc.get("rateUnit") !== null) return `default task price ${doc.get("rate")} ${doc.get("rateUnit")}`;
 
       await admin.goto(`${base}/admin/projects/${tasksId}?tab=tasks`, { waitUntil: "networkidle" });
       for (const [title, price] of [["Logo", "150"], ["Brochure", "400"]]) {
         await admin.getByRole("button", { name: "Add task" }).first().click();
         await admin.getByLabel("Task", { exact: true }).fill(title);
+        if (title === "Logo") {
+          const prefilled = await admin.getByLabel(/^Price/).inputValue();
+          if (prefilled !== "150.00") return `task price should be prefilled with the default, got "${prefilled}"`;
+        }
         await admin.getByLabel(/^Price/).fill(price);
         await admin.getByRole("dialog").getByRole("button", { name: "Add task" }).click();
         await admin.getByText(title, { exact: true }).first().waitFor({ timeout: 15000 });

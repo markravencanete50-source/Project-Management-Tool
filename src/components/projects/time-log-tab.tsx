@@ -2,6 +2,9 @@ import { CalendarClock, Clock, Wallet } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { TimeMeter } from "@/components/projects/time-meter";
+import { defaultEntryQuantity } from "@/lib/engagement";
+import { formatMonthKey } from "@/lib/dates";
 import { SectionHeader } from "@/components/common/section-header";
 import { DeleteConfirmButton } from "@/components/billing/delete-confirm-button";
 import { TimeEntryDialog } from "@/components/billing/time-entry-dialog";
@@ -12,7 +15,7 @@ import { requireAdmin } from "@/lib/auth/session";
 import { deleteTimeEntry } from "@/server/actions/time-entries";
 import { getAdminProjectPayments } from "@/server/data/payments";
 import { notFound } from "next/navigation";
-import type { TimeEntry } from "@/lib/types";
+import { isFlatUnit, type TimeEntry } from "@/lib/types";
 
 function Stat({ label, value, hint, icon }: { label: string; value: string; hint?: string; icon: ReactNode }) {
   return (
@@ -33,7 +36,7 @@ function Stat({ label, value, hint, icon }: { label: string; value: string; hint
 export async function TimeLogTab({ projectId }: { projectId: string }) {
   await requireAdmin();
   const { project, entries, finance } = await getAdminProjectPayments(projectId);
-  if (project.kind !== "retainer" || !project.rateUnit) notFound();
+  if (project.kind !== "retainer" || !project.rateUnit || isFlatUnit(project.rateUnit)) notFound();
   const { currency, rate, rateUnit } = project;
   const today = todayIso();
   const thisMonth = monthKeyOf(today);
@@ -71,11 +74,29 @@ export async function TimeLogTab({ projectId }: { projectId: string }) {
         />
       </div>
 
+      <TimeMeter
+        unit={rateUnit}
+        rate={rate}
+        currency={currency}
+        loggedHundredths={current?.quantityHundredths ?? 0}
+        hoursPerDay={project.hoursPerDay}
+        daysPerMonth={project.daysPerMonth}
+        monthLabel={formatMonthKey(thisMonth)}
+      />
+
       <section className="grid grid-cols-1 gap-4">
         <SectionHeader
           title="Time entries"
           description="Grouped by month. A month is billed in arrears and falls due on its last day."
-          actions={<TimeEntryDialog projectId={project.id} unit={rateUnit} rate={rate} currency={currency} />}
+          actions={
+            <TimeEntryDialog
+              projectId={project.id}
+              unit={rateUnit}
+              rate={rate}
+              currency={currency}
+              defaultQuantity={defaultEntryQuantity(rateUnit, project.hoursPerDay)}
+            />
+          }
         />
         {entries.length === 0 ? (
           <Empty className="border">

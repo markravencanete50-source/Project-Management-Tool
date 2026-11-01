@@ -1,6 +1,6 @@
 import "server-only";
 import { Timestamp, type DocumentSnapshot, type QuerySnapshot } from "firebase-admin/firestore";
-import { normalizeProspectEngagement } from "@/lib/engagement";
+import { DEFAULT_DAYS_PER_MONTH, DEFAULT_HOURS_PER_DAY, normalizeProspectEngagement } from "@/lib/engagement";
 import type { Project, Prospect } from "@/lib/types";
 
 function plain(value: unknown): unknown {
@@ -28,7 +28,7 @@ export function fromDocs<T extends { id: string }>(snap: QuerySnapshot): T[] {
  */
 export function projectFromDoc(snap: DocumentSnapshot): Project {
   const doc = fromDoc<Project>(snap);
-  return { ...doc, kind: doc.kind ?? "fixed", rate: doc.rate ?? 0, rateUnit: doc.rateUnit ?? null, contractValue: doc.contractValue ?? 0 };
+  return { ...doc, kind: doc.kind ?? "fixed", rate: doc.rate ?? 0, rateUnit: doc.rateUnit ?? null, hoursPerDay: doc.hoursPerDay ?? DEFAULT_HOURS_PER_DAY, daysPerMonth: doc.daysPerMonth ?? DEFAULT_DAYS_PER_MONTH, endDate: doc.endDate ?? null, endDateAuto: doc.endDateAuto ?? false, contractValue: doc.contractValue ?? 0 };
 }
 
 export function projectsFromDocs(snap: QuerySnapshot): Project[] {

@@ -8,11 +8,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { RetainerSchedule } from "@/components/projects-core/retainer-schedule";
 import { SimpleSelect } from "@/components/projects-core/simple-select";
 import { useAction } from "@/components/common/use-action";
 import { updateProject } from "@/server/actions/projects";
 import { projectUpdateSchema, retainerUpdateSchema, tasksUpdateSchema } from "@/lib/validation/projects";
-import type { ProjectKind, RateUnit } from "@/lib/types";
+import type { Currency } from "@/lib/money";
+import { isFlatUnit, type ProjectKind, type RateUnit } from "@/lib/types";
 
 /** Every editable field as typed. Fields that do not apply to the kind are left out of the request. */
 export type EditValues = {
@@ -21,13 +23,20 @@ export type EditValues = {
   revisionAllowance: string;
   rateUnit: RateUnit;
   rate: string;
+  /** Retainers: working schedule as typed ("8", "22"). */
+  hoursPerDay: string;
+  daysPerMonth: string;
   startDate: string;
   deadline: string;
+  /** Retainers: last day of service. */
+  endDate: string;
 };
 
 const UNIT_OPTIONS: { value: RateUnit; label: string }[] = [
   { value: "hour", label: "Per hour" },
   { value: "day", label: "Per day" },
+  { value: "week", label: "Per week" },
+  { value: "month", label: "Per month" },
 ];
 
 function resolverFor(kind: ProjectKind): Resolver<EditValues> {
@@ -45,7 +54,23 @@ function resolverFor(kind: ProjectKind): Resolver<EditValues> {
 }
 
 /** Edits title, description, dates and the kind's own settings. Never contract value, status or kind. */
-export function ProjectEditDialog({ projectId, kind, initial }: { projectId: string; kind: ProjectKind; initial: EditValues }) {
+export function ProjectEditDialog({
+  projectId,
+  kind,
+  initial,
+  currency,
+  triggerLabel = "Edit",
+  compact = false,
+}: {
+  projectId: string;
+  kind: ProjectKind;
+  initial: EditValues;
+  /** Used to label the default price per task field. */
+  currency?: Currency;
+  triggerLabel?: string;
+  /** A small ghost trigger, for shortcuts placed inside a page section. */
+  compact?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const { pending, execute } = useAction();
 
@@ -53,6 +78,9 @@ export function ProjectEditDialog({ projectId, kind, initial }: { projectId: str
   const { register, control, handleSubmit, reset, formState } = form;
   const { errors } = formState;
   const unit = useWatch({ control, name: "rateUnit" });
+  const rateText = useWatch({ control, name: "rate" }) ?? "";
+  const hoursText = useWatch({ control, name: "hoursPerDay" }) ?? "";
+  const daysText = useWatch({ control, name: "daysPerMonth" }) ?? "";
 
   function onSubmit() {
     const values = form.getValues();
@@ -67,9 +95,9 @@ export function ProjectEditDialog({ projectId, kind, initial }: { projectId: str
         if (next) reset(initial);
       }}
     >
-      <DialogTrigger render={<Button variant="outline" />}>
+      <DialogTrigger render={<Button variant={compact ? "ghost" : "outline"} size={compact ? "sm" : "default"} />}>
         <Pencil data-icon="inline-start" />
-        Edit
+        {triggerLabel}
       </DialogTrigger>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
@@ -121,9 +149,43 @@ export function ProjectEditDialog({ projectId, kind, initial }: { projectId: str
                   <FieldError errors={[errors.rate]} />
                 </Field>
                 <p className="text-sm text-muted-foreground sm:col-span-2">
-                  Changing the rate re-prices all logged time, past months included, because bills are worked out from the current rate.
+                  {isFlatUnit(unit)
+                    ? `Changing the rate re-prices every billing period, past ${unit}s included, because bills are worked out from the current rate. The first ${unit} is always charged in full.`
+                    : "Changing the rate re-prices all logged time, past months included, because bills are worked out from the current rate."}
                 </p>
+                <div className="sm:col-span-2">
+                  <RetainerSchedule
+                    idPrefix="edit"
+                    hoursField={register("hoursPerDay")}
+                    daysField={register("daysPerMonth")}
+                    hoursError={errors.hoursPerDay}
+                    daysError={errors.daysPerMonth}
+                    unit={unit}
+                    currency={currency ?? "USD"}
+                    rateText={rateText}
+                    hoursText={hoursText}
+                    daysText={daysText}
+                  />
+                </div>
               </div>
+            ) : null}
+            {kind === "tasks" ? (
+              <Field data-invalid={Boolean(errors.rate)}>
+                <FieldLabel htmlFor="edit-task-price">Default price per task{currency ? ` (${currency})` : ""}, optional</FieldLabel>
+                <Input
+                  id="edit-task-price"
+                  inputMode="decimal"
+                  placeholder="500.00"
+                  autoComplete="off"
+                  className="tabular-nums sm:max-w-52"
+                  aria-invalid={Boolean(errors.rate)}
+                  {...register("rate")}
+                />
+                <FieldDescription>
+                  New tasks start at this price. Changing it does not reprice existing tasks. Leave it blank for no default.
+                </FieldDescription>
+                <FieldError errors={[errors.rate]} />
+              </Field>
             ) : null}
             <div className="grid gap-5 sm:grid-cols-2">
               <Field data-invalid={Boolean(errors.startDate)}>
@@ -131,11 +193,20 @@ export function ProjectEditDialog({ projectId, kind, initial }: { projectId: str
                 <Input id="edit-start" type="date" {...register("startDate")} />
                 <FieldError errors={[errors.startDate]} />
               </Field>
-              <Field data-invalid={Boolean(errors.deadline)}>
-                <FieldLabel htmlFor="edit-deadline">{kind === "retainer" ? "End date" : "Deadline"}</FieldLabel>
-                <Input id="edit-deadline" type="date" {...register("deadline")} />
-                <FieldError errors={[errors.deadline]} />
-              </Field>
+              {kind === "retainer" ? (
+                <Field data-invalid={Boolean(errors.endDate)}>
+                  <FieldLabel htmlFor="edit-end">Last day of service, optional</FieldLabel>
+                  <Input id="edit-end" type="date" {...register("endDate")} />
+                  {isFlatUnit(unit) ? <FieldDescription>Week and month billing stops after this day.</FieldDescription> : null}
+                  <FieldError errors={[errors.endDate]} />
+                </Field>
+              ) : (
+                <Field data-invalid={Boolean(errors.deadline)}>
+                  <FieldLabel htmlFor="edit-deadline">Deadline</FieldLabel>
+                  <Input id="edit-deadline" type="date" {...register("deadline")} />
+                  <FieldError errors={[errors.deadline]} />
+                </Field>
+              )}
             </div>
           </FieldGroup>
           <DialogFooter>

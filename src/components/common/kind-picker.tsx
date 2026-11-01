@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 const DESCRIPTIONS: Record<ProjectKind, string> = {
   fixed: "One contract value, a payment schedule, milestones and an agreement.",
-  retainer: "Ongoing work billed by the hour or day, monthly in arrears.",
+  retainer: "Ongoing work billed by the hour, day, week or month.",
   tasks: "A list of priced tasks. Each one is billed when it is done.",
 };
 

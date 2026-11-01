@@ -2,6 +2,8 @@ import { z } from "zod";
 import { CURRENCIES, toMinor } from "@/lib/money";
 import { isoDateSchema } from "@/lib/dates";
 import { MANUAL_PROJECT_STATUSES, RATE_UNITS } from "@/lib/types";
+import { toHundredths } from "@/lib/billing";
+import { DEFAULT_DAYS_PER_MONTH, DEFAULT_HOURS_PER_DAY } from "@/lib/engagement";
 
 /** Optional date-only field: empty string means "not set". */
 const optionalDate = z
@@ -47,6 +49,42 @@ const createCommon = {
 /** A rate per hour or day. Must be above zero. */
 const rateString = moneyString.refine((n) => n > 0, "Rate must be greater than zero");
 
+/**
+ * The default price per new task. Blank means none (0). Not negative. It only
+ * prefills new tasks and never reprices existing ones.
+ */
+const defaultTaskPrice = z
+  .string()
+  .trim()
+  .transform((s, ctx) => {
+    if (s === "") return 0;
+    const minor = toMinor(s);
+    if (minor === null) {
+      ctx.addIssue({ code: "custom", message: "Enter a valid amount, for example 500.00" });
+      return z.NEVER;
+    }
+    return minor;
+  });
+
+/** A schedule value typed as a decimal, stored as hundredths. Blank means the default. */
+const scheduleField = (label: string, min: number, max: number, fallback: number) =>
+  z
+    .string()
+    .trim()
+    .transform((s, ctx) => {
+      if (s === "") return fallback;
+      const h = toHundredths(s);
+      if (h === null || h < min * 100 || h > max * 100) {
+        ctx.addIssue({ code: "custom", message: `${label} must be a number from ${min} to ${max}` });
+        return z.NEVER;
+      }
+      return h;
+    });
+/** Hours worked per day, 0.25 to 24 (default 8). */
+export const hoursPerDayField = scheduleField("Hours per day", 0.25, 24, DEFAULT_HOURS_PER_DAY);
+/** Days worked per month, 0.5 to 31 (default 22). */
+export const daysPerMonthField = scheduleField("Days per month", 0.5, 31, DEFAULT_DAYS_PER_MONTH);
+
 const fixedCreate = z
   .object({
     ...createCommon,
@@ -56,16 +94,28 @@ const fixedCreate = z
   })
   .refine(datesInOrder, datesMessage);
 
+/** Retainers: the last day of service. Blank means ongoing. */
+const endDateMessage = { message: "Last day of service cannot be before the start date", path: ["endDate"] };
+function endAfterStart(v: { startDate: string | null; endDate?: string | null }) {
+  return !v.startDate || !v.endDate || v.endDate >= v.startDate;
+}
+
 const retainerCreate = z
   .object({
     ...createCommon,
     kind: z.literal("retainer"),
     rateUnit: z.enum(RATE_UNITS),
     rate: rateString,
+    hoursPerDay: hoursPerDayField.optional(),
+    daysPerMonth: daysPerMonthField.optional(),
+    endDate: optionalDate.optional(),
   })
-  .refine(datesInOrder, datesMessage);
+  .refine(datesInOrder, datesMessage)
+  .refine(endAfterStart, endDateMessage);
 
-const tasksCreate = z.object({ ...createCommon, kind: z.literal("tasks") }).refine(datesInOrder, datesMessage);
+const tasksCreate = z
+  .object({ ...createCommon, kind: z.literal("tasks"), rate: defaultTaskPrice.optional() })
+  .refine(datesInOrder, datesMessage);
 
 /** Input without a kind is a fixed project, so older callers keep working. */
 function defaultKind(value: unknown): unknown {
@@ -88,7 +138,7 @@ export const projectUpdateSchema = z
   })
   .refine(datesInOrder, datesMessage);
 
-/** Retainers can also change the rate. Task projects have no revision allowance. */
+/** Retainers can also change the rate, unit and last day of service. A typed end date is the owner's, never auto-cleared. Task projects have no revision allowance. */
 export const retainerUpdateSchema = z
   .object({
     title: z.string().trim().min(1, "Title is required").max(160),
@@ -97,13 +147,19 @@ export const retainerUpdateSchema = z
     rate: rateString,
     startDate: optionalDate,
     deadline: optionalDate,
+    hoursPerDay: hoursPerDayField.optional(),
+    daysPerMonth: daysPerMonthField.optional(),
+    endDate: optionalDate.optional(),
   })
-  .refine(datesInOrder, datesMessage);
+  .refine(datesInOrder, datesMessage)
+  .refine(endAfterStart, endDateMessage);
 
+/** Task projects can also change the default price per task (it never reprices existing tasks). */
 export const tasksUpdateSchema = z
   .object({
     title: z.string().trim().min(1, "Title is required").max(160),
     description: z.string().trim().max(5000),
+    rate: defaultTaskPrice.optional(),
     startDate: optionalDate,
     deadline: optionalDate,
   })

@@ -53,7 +53,7 @@ export default async function PortalHomePage() {
                 )}
                 {project.kind === "retainer" ? (
                   <p className="mt-auto text-sm text-muted-foreground">
-                    Billed monthly at{" "}
+                    {project.rateUnit === "week" ? "Billed weekly at" : "Billed monthly at"}{" "}
                     <span className="font-semibold text-foreground tabular-nums">
                       {formatMoney(project.rate, project.currency)} per {UNIT_LABELS[project.rateUnit ?? "hour"].singular}
                     </span>

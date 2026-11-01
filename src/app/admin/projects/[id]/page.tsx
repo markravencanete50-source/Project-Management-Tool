@@ -20,20 +20,22 @@ import { AgreementTab } from "@/components/projects/agreement-tab";
 import { RevisionsTab } from "@/components/projects/revisions-tab";
 import { TimeLogTab } from "@/components/projects/time-log-tab";
 import { TasksTab } from "@/components/projects/tasks-tab";
-import { entryAmount, formatQuantity, retainerMonths, taskTotals, UNIT_LABELS } from "@/lib/billing";
+import { entryAmount, formatQuantity, fromHundredths, retainerMonths, taskTotals, UNIT_LABELS } from "@/lib/billing";
 import { formatInstant, formatIsoDate, monthKeyOf, todayIso } from "@/lib/dates";
 import { formatMoney, fromMinor } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { getProjectDetail } from "@/server/data/projects";
 import { getAdminProjectPayments } from "@/server/data/payments";
 import { listProjectActivity } from "@/server/data/activity";
-import type { ProjectKind } from "@/lib/types";
+import { isFlatUnit, type ProjectKind, type RateUnit } from "@/lib/types";
+import { PeriodsTab } from "@/components/projects/periods-tab";
+import { expectedMonthly } from "@/lib/engagement";
 
 export const metadata = { title: "Project" };
 
-function parseTab(value: string | string[] | undefined, kind: ProjectKind): ProjectTab {
+function parseTab(value: string | string[] | undefined, kind: ProjectKind, unit: RateUnit | null): ProjectTab {
   const v = Array.isArray(value) ? value[0] : value;
-  return tabsFor(kind).find((t) => t.value === v)?.value ?? "overview";
+  return tabsFor(kind, unit).find((t) => t.value === v)?.value ?? "overview";
 }
 
 function Fact({ label, children, hint, tone }: { label: string; children: React.ReactNode; hint?: React.ReactNode; tone?: "danger" }) {
@@ -51,8 +53,8 @@ function Fact({ label, children, hint, tone }: { label: string; children: React.
 export default async function ProjectDetailPage({ params, searchParams }: PageProps<"/admin/projects/[id]">) {
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   const { project, client, milestones, progress, inRevision } = await getProjectDetail(id);
-  const tabs = tabsFor(project.kind);
-  const tab = parseTab(sp.tab, project.kind);
+  const tabs = tabsFor(project.kind, project.rateUnit);
+  const tab = parseTab(sp.tab, project.kind, project.rateUnit);
   const archived = Boolean(project.archivedAt);
   const open = project.status !== "completed" && project.status !== "cancelled";
   const overdue = Boolean(project.deadline) && (project.deadline as string) < todayIso() && open;
@@ -90,6 +92,7 @@ export default async function ProjectDetailPage({ params, searchParams }: PagePr
             <ProjectEditDialog
               projectId={project.id}
               kind={project.kind}
+              currency={project.currency}
               initial={{
                 title: project.title,
                 description: project.description,
@@ -98,6 +101,9 @@ export default async function ProjectDetailPage({ params, searchParams }: PagePr
                 rate: project.rate ? fromMinor(project.rate) : "",
                 startDate: project.startDate ?? "",
                 deadline: project.deadline ?? "",
+                endDate: project.endDate ?? "",
+                hoursPerDay: fromHundredths(project.hoursPerDay),
+                daysPerMonth: fromHundredths(project.daysPerMonth),
               }}
             />
             <ProjectArchiveButton projectId={project.id} archived={archived} />
@@ -165,6 +171,7 @@ export default async function ProjectDetailPage({ params, searchParams }: PagePr
         ) : null}
         {tab === "overview" && project.kind !== "fixed" ? <DerivedOverview projectId={project.id} /> : null}
         {tab === "time" ? <TimeLogTab projectId={project.id} /> : null}
+        {tab === "periods" ? <PeriodsTab projectId={project.id} /> : null}
         {tab === "tasks" ? <TasksTab projectId={project.id} /> : null}
         {tab === "payments" ? <PaymentsTab projectId={project.id} /> : null}
         {tab === "agreement" ? <AgreementTab projectId={project.id} /> : null}
@@ -193,21 +200,82 @@ async function DerivedOverview({ projectId }: { projectId: string }) {
         </p>
         <DetailGrid className="sm:grid-cols-1 xl:grid-cols-2">
           <DetailItem label="Start date">{project.startDate ? formatIsoDate(project.startDate) : "Not set"}</DetailItem>
-          <DetailItem label={project.kind === "retainer" ? "End date" : "Deadline"}>
-            {project.deadline ? formatIsoDate(project.deadline) : "Not set"}
-          </DetailItem>
+          {project.kind === "retainer" ? (
+            <DetailItem label="Last day of service">{project.endDate ? formatIsoDate(project.endDate) : "Ongoing"}</DetailItem>
+          ) : (
+            <DetailItem label="Deadline">{project.deadline ? formatIsoDate(project.deadline) : "Not set"}</DetailItem>
+          )}
           <DetailItem label="Currency">{project.currency}</DetailItem>
           {project.kind === "retainer" && project.rateUnit ? (
             <DetailItem label="Rate">
               {formatMoney(project.rate, currency)} per {UNIT_LABELS[project.rateUnit].singular}
             </DetailItem>
           ) : (
-            <DetailItem label="Billing">Per task, when done</DetailItem>
+            <DetailItem label="Billing">{project.rate > 0 ? `Per task, when done (default ${formatMoney(project.rate, currency)})` : "Per task, when done"}</DetailItem>
           )}
+          {project.kind === "retainer" && project.rateUnit ? (
+            <>
+              <DetailItem label="Working schedule">
+                {fromHundredths(project.hoursPerDay)} h/day, {fromHundredths(project.daysPerMonth)} days/month
+              </DetailItem>
+              <DetailItem label="Expected per month">
+                {formatMoney(expectedMonthly(project.rateUnit, project.rate, project.hoursPerDay, project.daysPerMonth), currency)}
+              </DetailItem>
+            </>
+          ) : null}
         </DetailGrid>
       </CardContent>
     </Card>
   );
+
+  if (project.kind === "retainer" && isFlatUnit(project.rateUnit)) {
+    const unit = project.rateUnit;
+    const recentLines = [...finance.lines].reverse().slice(0, 5);
+    const currentLine = finance.lines.find((l) => l.inProgress);
+    return (
+      <div className="flex flex-col gap-6">
+        <dl className="stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Fact label="Rate" hint={`Billed automatically each ${unit}`}>
+            {formatMoney(project.rate, currency)} <span className="text-sm font-normal text-muted-foreground">per {unit}</span>
+          </Fact>
+          <Fact label={`This ${unit}`} hint={currentLine ? "In progress, due on its last day" : "Billing has ended"}>
+            {formatMoney(currentLine?.amountDue ?? 0, currency)}
+          </Fact>
+          <Fact label="Billed so far" hint={`Paid ${formatMoney(finance.paid, currency)}`}>
+            {formatMoney(finance.scheduleTotal, currency)}
+          </Fact>
+          <Fact label={finance.pending < 0 ? "Balance" : "Pending"} tone={finance.overdueAmount > 0 ? "danger" : undefined} hint={finance.overdueAmount > 0 ? `${formatMoney(finance.overdueAmount, currency)} overdue` : undefined}>
+            {pendingText}
+          </Fact>
+        </dl>
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <Card>
+            <CardHeader className="flex-row items-center justify-between gap-2">
+              <CardTitle>Recent billing periods</CardTitle>
+              <Button variant="outline" size="sm" render={<Link href={`/admin/projects/${project.id}?tab=periods`} />}>
+                Open billing periods
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {recentLines.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nothing billed yet. The first {unit} is billed from the start date, in full.</p>
+              ) : (
+                <ul className="divide-y divide-border/70">
+                  {recentLines.map((l) => (
+                    <li key={l.id} className="flex items-baseline justify-between gap-3 py-2.5 text-sm">
+                      <span className="min-w-0 font-medium">{l.label}</span>
+                      <span className="shrink-0 tabular-nums">{formatMoney(l.amountDue, currency)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+          {details}
+        </div>
+      </div>
+    );
+  }
 
   if (project.kind === "retainer" && project.rateUnit) {
     const unit = project.rateUnit;

@@ -21,19 +21,24 @@ export function TaskDialog({
   currency,
   task,
   iconOnly = false,
+  defaultPrice = 0,
 }: {
   projectId: string;
   currency: Currency;
   task?: EditableTask;
   iconOnly?: boolean;
+  /** Add mode: the project's default price per task in minor units. 0 means none. */
+  defaultPrice?: number;
 }) {
   const [open, setOpen] = useState(false);
   const { pending, execute } = useAction();
-  const initial: FormValues = task ? { title: task.title, price: fromMinor(task.price) } : { title: "", price: "" };
+  const blank: FormValues = { title: "", price: defaultPrice > 0 ? fromMinor(defaultPrice) : "" };
+  const initial: FormValues = task ? { title: task.title, price: fromMinor(task.price) } : blank;
   const {
     register,
     handleSubmit,
     reset,
+    setFocus,
     formState: { errors },
   } = useForm<FormValues>({ defaultValues: initial });
 
@@ -42,18 +47,26 @@ export function TaskDialog({
     if (next) reset(initial);
   }
 
-  function onSubmit(values: FormValues) {
+  function submit(values: FormValues, another: boolean) {
     execute(
       async (): Promise<ActionResult<unknown>> => (task ? updateTask({ projectId, taskId: task.id, ...values }) : addTask({ projectId, ...values })),
       {
         success: task ? "Task updated" : "Task added",
         onSuccess: () => {
-          setOpen(false);
-          reset({ title: "", price: "" });
+          reset(blank);
+          if (another) {
+            // Keep the dialog open for the next task: title cleared, price back to the default.
+            setFocus("title");
+          } else {
+            setOpen(false);
+          }
         },
       },
     );
   }
+
+  const onSubmit = (values: FormValues) => submit(values, false);
+  const onAddAnother = handleSubmit((values) => submit(values, true));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -73,7 +86,11 @@ export function TaskDialog({
         <DialogHeader>
           <DialogTitle>{task ? "Edit task" : "Add task"}</DialogTitle>
           <DialogDescription>
-            {task ? "Changing the price of a finished task changes what is owed." : `Give it a price in ${currency}. It is owed once you mark it done.`}
+            {task
+              ? "Changing the price of a finished task changes what is owed."
+              : defaultPrice > 0
+                ? `Starts at the default price in ${currency}, which you can change. It is owed once you mark it done.`
+                : `Give it a price in ${currency}. It is owed once you mark it done.`}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 gap-4" noValidate>
@@ -116,6 +133,11 @@ export function TaskDialog({
           </FieldGroup>
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="outline" />}>Cancel</DialogClose>
+            {task ? null : (
+              <Button type="button" variant="outline" disabled={pending} onClick={onAddAnother}>
+                Add and add another
+              </Button>
+            )}
             <Button type="submit" disabled={pending}>
               {pending ? "Saving..." : task ? "Save changes" : "Add task"}
             </Button>

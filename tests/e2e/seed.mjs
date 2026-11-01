@@ -145,9 +145,19 @@ export async function seed() {
     {
       id: IDS.projT1, clientId: IDS.clientB, title: "Beta Task Support", status: "active", currency: "USD", contractValue: 0,
       revisionAllowance: 0, acceptedAt: ts(addDays(today, -45)), startDate: addDays(today, -45), deadline: null,
-      kind: "tasks", rateUnit: null, rate: 0,
+      kind: "tasks", rateUnit: null, rate: process.env.E2E_SHOTS ? 25000 : 0,
     },
   );
+  // Screenshot-only fixtures (kept out of normal runs so dashboard totals stay as asserted).
+  if (process.env.E2E_SHOTS) {
+    projects.push(
+      {
+        id: "proj-a-flat-month", clientId: IDS.clientA, title: "Acme Monthly Flat Retainer", status: "active", currency: "GBP", contractValue: 0,
+        revisionAllowance: 0, acceptedAt: ts(addDays(today, -75)), startDate: addDays(today, -75), deadline: null,
+        kind: "retainer", rateUnit: "month", rate: 120000, hoursPerDay: 800, daysPerMonth: 2200, endDate: null, endDateAuto: false,
+      },
+    );
+  }
   for (const p of projects) {
     const { id, ...rest } = p;
     await db.collection("projects").doc(id).set({ description: `Scope for ${p.title}`, archivedAt: null, ...rest, ...base });

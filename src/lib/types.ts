@@ -28,8 +28,18 @@ export const MANUAL_PROJECT_STATUSES = ["active", "on_hold", "completed", "cance
 export const PROJECT_KINDS = ["fixed", "retainer", "tasks"] as const;
 export type ProjectKind = (typeof PROJECT_KINDS)[number];
 
-export const RATE_UNITS = ["hour", "day"] as const;
+/**
+ * hour and day are logged: the owner records time against the rate. week and
+ * month are flat fees billed automatically for every period, with no logging.
+ */
+export const RATE_UNITS = ["hour", "day", "week", "month"] as const;
 export type RateUnit = (typeof RATE_UNITS)[number];
+export type FlatRateUnit = "week" | "month";
+
+/** True for the auto-billed units (a flat fee per week or month). */
+export function isFlatUnit(unit: RateUnit | null | undefined): unit is FlatRateUnit {
+  return unit === "week" || unit === "month";
+}
 
 export const TASK_STATUSES = ["todo", "done"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
@@ -84,8 +94,12 @@ export type Prospect = {
   engagementKind: ProjectKind;
   /** Retainer prospects only. Null otherwise. */
   rateUnit: RateUnit | null;
-  /** Retainer prospects only, minor units per unit. 0 otherwise. */
+  /** Retainer: minor units per unit. Tasks: default price per task. 0 otherwise. */
   rate: number;
+  /** Retainer prospects: hours per day times 100. Defaults to 800. */
+  hoursPerDay: number;
+  /** Retainer prospects: working days per month times 100. Defaults to 2200. */
+  daysPerMonth: number;
   stage: ProspectStage;
   lostReason: LostReason | null;
   nextFollowUp: IsoDate | null;
@@ -112,10 +126,21 @@ export type Project = {
   kind: ProjectKind;
   /** Fixed projects only. 0 for the other kinds. */
   contractValue: number;
-  /** Retainers only: what one unit of logged time costs, in minor units. 0 otherwise. */
+  /** Retainer: what one unit of logged time costs. Tasks: default price per new task. Minor units; 0 otherwise. */
   rate: number;
   /** Retainers only. Null otherwise. */
   rateUnit: RateUnit | null;
+  /**
+   * Retainers only: the last day of service. Flat (week/month) billing covers
+   * periods that start on or before min(today, endDate). Null means ongoing.
+   */
+  endDate: IsoDate | null;
+  /** Retainers: working schedule. Hours per day times 100 (8 is 800). Defaults to 800 for every other document. */
+  hoursPerDay: number;
+  /** Retainers: working days per month times 100 (22 is 2200). Defaults to 2200. */
+  daysPerMonth: number;
+  /** True when endDate was set by putting the project on hold or completing it, so going active again may clear it. */
+  endDateAuto: boolean;
   revisionAllowance: number;
   archivedAt: Date | null;
   createdAt: Date;

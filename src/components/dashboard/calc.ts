@@ -18,7 +18,7 @@ export type DashProject = Pick<
   "id" | "clientId" | "title" | "status" | "currency" | "contractValue" | "acceptedAt" | "archivedAt"
 > &
   // Absent on documents written before engagement kinds: those are fixed projects.
-  Partial<Pick<Project, "kind" | "rate" | "rateUnit">>;
+  Partial<Pick<Project, "kind" | "rate" | "rateUnit" | "startDate" | "endDate">>;
 export type DashProspect = Pick<
   Prospect,
   "id" | "name" | "company" | "stage" | "estimatedValue" | "currency" | "nextFollowUp" | "closedAt" | "archivedAt"
@@ -419,7 +419,14 @@ export function buildDashboard(input: DashboardInput): DashboardData {
   for (const project of live) {
     const kind = project.kind ?? "fixed";
     const finance = financeFor({
-      project: { kind, contractValue: project.contractValue, rate: project.rate ?? 0, rateUnit: project.rateUnit ?? null },
+      project: {
+        kind,
+        contractValue: project.contractValue,
+        rate: project.rate ?? 0,
+        rateUnit: project.rateUnit ?? null,
+        startDate: project.startDate ?? null,
+        endDate: project.endDate ?? null,
+      },
       schedule: scheduleBy.get(project.id) ?? [],
       entries: entriesBy.get(project.id) ?? [],
       tasks: tasksBy.get(project.id) ?? [],
@@ -434,7 +441,7 @@ export function buildDashboard(input: DashboardInput): DashboardData {
     }
     if (kind === "retainer" && project.status !== "cancelled") {
       const lines = derivedBillLines(
-        { kind, rate: project.rate ?? 0, rateUnit: project.rateUnit ?? null },
+        { kind, rate: project.rate ?? 0, rateUnit: project.rateUnit ?? null, startDate: project.startDate ?? null, endDate: project.endDate ?? null },
         { entries: entriesBy.get(project.id) ?? [], tasks: [] },
         today,
       );

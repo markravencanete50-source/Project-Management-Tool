@@ -18,10 +18,10 @@ import { addTimeEntry, updateTimeEntry } from "@/server/actions/time-entries";
 export type EditableEntry = { id: string; date: string; quantityHundredths: number; note: string };
 type FormValues = { date: string; quantity: string; note: string };
 
-function defaults(entry?: EditableEntry): FormValues {
+function defaults(entry?: EditableEntry, defaultQuantity = 0): FormValues {
   return entry
     ? { date: entry.date, quantity: fromHundredths(entry.quantityHundredths), note: entry.note }
-    : { date: todayIso(), quantity: "", note: "" };
+    : { date: todayIso(), quantity: defaultQuantity > 0 ? fromHundredths(defaultQuantity) : "", note: "" };
 }
 
 /** Log time (no `entry` prop) or edit an entry. Shows what the entry is worth as you type. */
@@ -31,12 +31,15 @@ export function TimeEntryDialog({
   rate,
   currency,
   entry,
+  defaultQuantity = 0,
 }: {
   projectId: string;
   unit: RateUnit;
   rate: number;
   currency: Currency;
   entry?: EditableEntry;
+  /** New entries start at this quantity in hundredths (a working day of hours, or one day). 0 means blank. */
+  defaultQuantity?: number;
 }) {
   const [open, setOpen] = useState(false);
   const { pending, execute } = useAction();
@@ -46,14 +49,14 @@ export function TimeEntryDialog({
     reset,
     control,
     formState: { errors },
-  } = useForm<FormValues>({ defaultValues: defaults(entry) });
+  } = useForm<FormValues>({ defaultValues: defaults(entry, defaultQuantity) });
 
   const typed = toHundredths(useWatch({ control, name: "quantity" }) ?? "");
   const word = UNIT_LABELS[unit].plural;
 
   function onOpenChange(next: boolean) {
     setOpen(next);
-    if (next) reset(defaults(entry));
+    if (next) reset(defaults(entry, defaultQuantity));
   }
 
   function onSubmit(values: FormValues) {
