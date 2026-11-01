@@ -11,7 +11,7 @@ export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
  */
 export async function uploadFile(
   file: File,
-  opts: { projectId: string; purpose: "receipts" | "revisions" },
+  opts: { projectId: string; purpose: "receipts" | "revisions" | "standalone-receipts" },
 ): Promise<string> {
   if (file.size > MAX_UPLOAD_BYTES) throw new Error("Files must be 10 MB or smaller");
   const resourceType = file.type.startsWith("image/") ? "image" : "raw";

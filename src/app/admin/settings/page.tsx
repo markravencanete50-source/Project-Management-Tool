@@ -6,6 +6,8 @@ import { BackupsList } from "@/components/settings/backups-list";
 import { Button } from "@/components/ui/button";
 import { requireAdmin } from "@/lib/auth/session";
 import { DEFAULT_AGREEMENT_TEMPLATE } from "@/lib/pdf/default-template";
+import { sourceLabel } from "@/lib/fx/convert";
+import { loadLiveRates } from "@/server/data/fx";
 import { getSettings } from "@/server/data/settings";
 import { listBackups } from "@/server/export";
 
@@ -14,6 +16,11 @@ export const metadata = { title: "Settings" };
 export default async function SettingsPage() {
   await requireAdmin();
   const settings = await getSettings();
+  // Live rates are only a hint beside the manual inputs; a failure just hides the hint.
+  const live = await loadLiveRates(["USD", "GBP"]).catch(() => null);
+  const liveRates = Object.fromEntries(
+    (live?.quotes ?? []).map((q) => [q.currency, { rate: q.rate.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 4 }), raw: q.rate, label: sourceLabel(q.source) }]),
+  );
   // A failed Cloudinary call should not take the whole settings page down.
   const backups = await listBackups().then(
     (items) => ({ items, failed: false }),
@@ -32,7 +39,9 @@ export default async function SettingsPage() {
             businessName: settings.businessName,
             businessEmail: settings.businessEmail,
             agreementTemplate: settings.agreementTemplate,
+            fxOverrides: { USD: settings.fxOverrides.USD ?? null, GBP: settings.fxOverrides.GBP ?? null },
           }}
+          liveRates={liveRates}
           defaultTemplate={DEFAULT_AGREEMENT_TEMPLATE}
         />
 

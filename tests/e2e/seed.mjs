@@ -87,6 +87,7 @@ export async function seed() {
     { id: "pr-due", name: "Carl Contacted", company: "Followup Inc", stage: "contacted", source: "linkedin", estimatedValue: 300000, currency: "USD", nextFollowUp: addDays(today, -3) },
     { id: "pr-prop", name: "Pia Proposal", company: "Proposal Co", stage: "proposal_sent", source: "upwork", estimatedValue: 8000000, currency: "PHP", nextFollowUp: addDays(today, 2) },
     { id: "pr-neg", name: "Nate Negotiating", company: "Deal Works", stage: "negotiating", source: "website", estimatedValue: 500000, currency: "USD", nextFollowUp: null },
+    { id: "pr-wait", name: "Wanda Waiting", company: "Patience Ltd", stage: "waiting_for_client", source: "linkedin", estimatedValue: 120000, currency: "GBP", nextFollowUp: null },
     { id: "pr-won", name: "Will Won", company: "Winners", stage: "won", source: "cold_outreach", estimatedValue: 200000, currency: "GBP", nextFollowUp: null, closedAt: now },
     { id: "pr-lost", name: "Lena Lost", company: "Lostco", stage: "lost", source: "other", estimatedValue: 100000, currency: "GBP", nextFollowUp: null, lostReason: "price", closedAt: now },
     {

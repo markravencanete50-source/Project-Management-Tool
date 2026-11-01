@@ -25,6 +25,8 @@ export type ExportData = {
     timeEntries: Row[];
     tasks: Row[];
   })[];
+  /** Payment-only entries (collection standalonePayments), not attached to any project. */
+  standalonePayments: Row[];
   activity: Row[];
   settings: Record<string, unknown> | null;
 };
@@ -46,12 +48,13 @@ function rows(snap: FirebaseFirestore.QuerySnapshot): Row[] {
 
 /** Every collection except loginTokens, with project subcollections nested. */
 export async function exportAll(): Promise<ExportData> {
-  const [clients, prospects, projectsSnap, activity, settingsSnap] = await Promise.all([
+  const [clients, prospects, projectsSnap, activity, settingsSnap, standalone] = await Promise.all([
     col.clients().get(),
     col.prospects().get(),
     col.projects().get(),
     col.activity().get(),
     col.settings().get(),
+    col.standalonePayments().get(),
   ]);
 
   const projects = await Promise.all(
@@ -84,6 +87,7 @@ export async function exportAll(): Promise<ExportData> {
     clients: rows(clients),
     prospects: rows(prospects),
     projects,
+    standalonePayments: rows(standalone),
     activity: rows(activity),
     settings: settingsSnap.exists ? (iso(settingsSnap.data()) as Record<string, unknown>) : null,
   };
@@ -117,6 +121,7 @@ export function paymentsCsv(data: ExportData): string {
     "client_id",
     "client_name",
     "recorded_at",
+    "source",
   ];
   const lines = [header.join(",")];
   const payments = data.projects.flatMap((project) =>
@@ -141,6 +146,34 @@ export function paymentsCsv(data: ExportData): string {
         project.clientId,
         clientNames.get(String(project.clientId)) ?? "",
         payment.createdAt,
+        "project",
+      ]
+        .map(cell)
+        .join(","),
+    );
+  }
+  // Payment-only entries: project columns are empty and project_kind is "none".
+  const standalone = [...data.standalonePayments].sort((a, b) => String(a.paidOn ?? "").localeCompare(String(b.paidOn ?? "")));
+  for (const payment of standalone) {
+    const amount = Number(payment.amount ?? 0);
+    const clientId = payment.clientId ? String(payment.clientId) : "";
+    lines.push(
+      [
+        payment.id,
+        payment.paidOn,
+        fromMinor(amount),
+        amount,
+        payment.currency,
+        payment.method,
+        payment.note,
+        payment.receiptPublicId ? "yes" : "no",
+        "",
+        "",
+        "none",
+        clientId,
+        clientId ? (clientNames.get(clientId) ?? "") : payment.payerName,
+        payment.createdAt,
+        "standalone",
       ]
         .map(cell)
         .join(","),

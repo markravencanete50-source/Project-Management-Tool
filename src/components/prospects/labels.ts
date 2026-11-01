@@ -1,11 +1,13 @@
 import { formatMoney } from "@/lib/money";
-import { valueSuffix } from "@/lib/engagement";
+import { rateWithMonthly, valueSuffix } from "@/lib/engagement";
+import { UNIT_LABELS } from "@/lib/billing";
 import type { LostReason, Prospect, ProspectSource, ProspectStage } from "@/lib/types";
 
 export const STAGE_LABELS: Record<ProspectStage, string> = {
   new: "New",
   contacted: "Contacted",
   proposal_sent: "Proposal sent",
+  waiting_for_client: "Waiting for client",
   negotiating: "Negotiating",
   won: "Won",
   lost: "Lost",
@@ -51,11 +53,12 @@ export function sortProspects<T extends { nextFollowUp: string | null; stage: Pr
   });
 }
 
-/** Badge colour per stage: new neutral, contacted info, proposal violet, negotiating warning, won success, lost destructive. */
-export const STAGE_VARIANT: Record<ProspectStage, "secondary" | "info" | "violet" | "warning" | "success" | "destructive"> = {
+/** Badge colour per stage: new neutral, contacted info, proposal violet, waiting for client teal, negotiating warning, won success, lost destructive. */
+export const STAGE_VARIANT: Record<ProspectStage, "secondary" | "info" | "violet" | "teal" | "warning" | "success" | "destructive"> = {
   new: "secondary",
   contacted: "info",
   proposal_sent: "violet",
+  waiting_for_client: "teal",
   negotiating: "warning",
   won: "success",
   lost: "destructive",
@@ -66,10 +69,19 @@ export const STAGE_DOT: Record<ProspectStage, string> = {
   new: "bg-muted-foreground",
   contacted: "bg-info",
   proposal_sent: "bg-violet",
+  waiting_for_client: "bg-teal",
   negotiating: "bg-warning",
   won: "bg-success",
   lost: "bg-destructive",
 };
+
+/** "£250.00 / hour, about £44,000.00 / month" for a retainer prospect that has a rate; null otherwise. */
+export function retainerRateLine(p: Pick<Prospect, "engagementKind" | "rateUnit" | "rate" | "currency" | "hoursPerDay" | "daysPerMonth">): string | null {
+  if (p.engagementKind !== "retainer" || !p.rateUnit || !(p.rate > 0)) return null;
+  const r = rateWithMonthly(p.rateUnit, p.rate, p.hoursPerDay, p.daysPerMonth);
+  const base = `${formatMoney(p.rate, p.currency)} / ${UNIT_LABELS[p.rateUnit].singular}`;
+  return r.monthly === null ? base : `${base}, about ${formatMoney(r.monthly, p.currency)} / month`;
+}
 
 /** One short line combining company and service, or an empty string. */
 export function companyLine(p: { company: string; service: string }): string {

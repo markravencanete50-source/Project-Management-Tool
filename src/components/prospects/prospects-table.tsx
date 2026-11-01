@@ -10,6 +10,7 @@ import {
   companyLine,
   formatEstimate,
   isFollowUpDue,
+  retainerRateLine,
   LOST_REASON_LABELS,
   SOURCE_LABELS,
   STAGE_LABELS,
@@ -64,6 +65,7 @@ export function ProspectsTable({ prospects, today }: { prospects: Prospect[]; to
                 </span>
                 <span className="text-xs text-muted-foreground">{SOURCE_LABELS[p.source]}</span>
               </div>
+              {retainerRateLine(p) ? <div className="text-xs text-muted-foreground tabular-nums">{retainerRateLine(p)}</div> : null}
               {p.nextFollowUp || p.archivedAt || (p.stage === "lost" && p.lostReason) ? (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
                   {p.nextFollowUp ? (
@@ -136,6 +138,7 @@ export function ProspectsTable({ prospects, today }: { prospects: Prospect[]; to
                     ) : (
                       <span className="text-muted-foreground">Not set</span>
                     )}
+                    {retainerRateLine(p) ? <div className="text-xs font-normal text-muted-foreground">{retainerRateLine(p)}</div> : null}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">

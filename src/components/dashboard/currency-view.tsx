@@ -6,9 +6,25 @@ import { Info } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SegmentedControl } from "@/components/dashboard/segmented-control";
 import { DASH_VIEW_COOKIE, type DashView } from "@/lib/dash-view";
-import { SOURCE_NAMES, type RateSource } from "@/lib/fx/convert";
+import { type RateSource } from "@/lib/fx/convert";
 
 export type { DashView };
+
+/** The sentence under the dashboard header, by where the rates came from. */
+export function fxLine(mix: "none" | "manual" | "mixed" | "live", provider: "wise" | "market", updatedAgo: string | null, stale: boolean): string {
+  const live = provider === "wise" ? "Wise mid-market" : "market";
+  const when = `${updatedAgo ? `, updated ${updatedAgo}` : ""}${stale ? " (last known rates)" : ""}`;
+  if (mix === "manual") return "Converted at the rates you set in Settings.";
+  if (mix === "mixed") return `Converted at your rates and ${live} rates${when}.`;
+  return `Converted at ${live} rates${when}.`;
+}
+
+/** The honesty note about past payments, adapted to the rate source. */
+export function fxNote(mix: "none" | "manual" | "mixed" | "live"): string {
+  if (mix === "manual") return " The rate you set applies to all past payments, not the rate on the day they arrived.";
+  if (mix === "mixed") return " Past payments use today's live rate, or the rate you set, not the rate on the day they arrived.";
+  return " Past payments use today's rate, not the rate on the day they arrived.";
+}
 
 /**
  * "PHP total | Original currencies". The choice is the ?view= parameter and is
@@ -43,7 +59,7 @@ export function CurrencyViewToggle({ value }: { value: DashView }) {
   );
 }
 
-export type FxRateRow = { currency: string; rate: string; source: RateSource; updated: string };
+export type FxRateRow = { currency: string; rate: string; source: RateSource; sourceLabel: string; updated: string };
 
 /**
  * One line under the header saying how the PHP figures were made, with a
@@ -52,11 +68,13 @@ export type FxRateRow = { currency: string; rate: string; source: RateSource; up
  */
 export function FxInfo({
   provider,
+  mix,
   updatedAgo,
   stale,
   rows,
 }: {
   provider: "wise" | "market";
+  mix: "none" | "manual" | "mixed" | "live";
   updatedAgo: string | null;
   stale: boolean;
   rows: FxRateRow[];
@@ -66,8 +84,8 @@ export function FxInfo({
       <span>
         {rows.length === 0
           ? "Every project is in PHP, so nothing needed converting."
-          : `Converted at ${provider === "wise" ? "Wise mid-market" : "market"} rates${updatedAgo ? `, updated ${updatedAgo}` : ""}${stale ? " (last known rates)" : ""}.`}
-        {rows.length > 0 ? " Past payments use today's rate, not the rate on the day they arrived." : ""}
+          : fxLine(mix, provider, updatedAgo, stale)}
+        {rows.length > 0 ? fxNote(mix) : ""}
       </span>
       {rows.length > 0 ? (
         <Popover>
@@ -87,14 +105,15 @@ export function FxInfo({
                     1 {r.currency} = {r.rate} PHP
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {SOURCE_NAMES[r.source]}, {r.updated}
+                    {r.source === "manual" ? `(${r.sourceLabel})` : `(${r.sourceLabel}, ${r.updated})`}
                   </span>
                 </li>
               ))}
             </ul>
             <p className="text-xs text-muted-foreground">
-              Totals are a display conversion at the current rate, applied to all past payments. They change as rates change and
-              are never stored.
+              {mix === "manual"
+                ? "Totals are a display conversion at the rates you set in Settings, applied to all past payments. They change when you change a rate and are never stored."
+                : "Totals are a display conversion at the current rate, applied to all past payments. They change as rates change and are never stored. A rate you set in Settings always wins over the live one."}
             </p>
           </PopoverContent>
         </Popover>

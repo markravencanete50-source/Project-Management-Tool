@@ -6,6 +6,7 @@ export const col = {
   clients: () => db().collection("clients"),
   prospects: () => db().collection("prospects"),
   projects: () => db().collection("projects"),
+  standalonePayments: () => db().collection("standalonePayments"),
   activity: () => db().collection("activity"),
   loginTokens: () => db().collection("loginTokens"),
   settings: () => db().collection("settings").doc("app"),

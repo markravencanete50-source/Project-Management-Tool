@@ -25,6 +25,7 @@ const badgeVariants = cva(
         info: "bg-info/12 text-info [--dot:var(--info)] dark:bg-info/16",
         violet:
           "bg-violet/12 text-violet [--dot:var(--violet)] dark:bg-violet/16",
+        teal: "bg-teal/12 text-teal [--dot:var(--teal)] dark:bg-teal/16",
         outline:
           "border-border bg-card/60 text-muted-foreground [--dot:var(--muted-foreground)] [a]:hover:bg-muted [a]:hover:text-foreground",
         ghost:

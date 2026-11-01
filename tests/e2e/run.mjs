@@ -205,10 +205,10 @@ try {
   };
   const adminPages = [
     // Default view is PHP: totals are converted at the stub rates (GBP 70, USD 56) and name the original amounts.
-    ["/admin", ["£120.00", "$250.00", "Build milestone", "Recurring billed this month", "Converted at market rates", "₱"]],
-    ["/admin?view=original", ["£120.00", "$250.00", "Build milestone", "Recurring billed this month", "£100.00"]],
+    ["/admin", ["£120.00", "$250.00", "Build milestone", "Recurring billed this month", "Converted at market rates", "₱", "Expected this month", "Pipeline potential", "Not weighted by win chance", "Top open prospects"]],
+    ["/admin?view=original", ["£120.00", "$250.00", "Build milestone", "Recurring billed this month", "£120.00", "Pipeline potential", "Expected this month"]],
     ["/admin/prospects", ["Nina New", "Carl Contacted", "Lena Lost"]],
-    ["/admin/prospects?view=kanban", ["Nina New", "Pia Proposal"]],
+    ["/admin/prospects?view=kanban", ["Nina New", "Pia Proposal", "Wanda Waiting", "Waiting for client"]],
     ["/admin/prospects/pr-due", ["Carl Contacted", "Followup Inc"]],
     ["/admin/clients", ["Alice Anders", "Bob Brown"]],
     [`/admin/clients/${IDS.clientA}`, ["Alice Anders", "Acme Website Rebuild"]],
@@ -223,7 +223,7 @@ try {
     [`/admin/projects/${IDS.projA1}?tab=revisions`, ["Add a new pricing page"]],
     [`/admin/projects/${IDS.projA1}?tab=activity`, [CLIENT_NOTE, INTERNAL_NOTE]],
     // Retainer: 15h last month and 2h this month at 50.00 an hour, 300.00 paid.
-    [`/admin/projects/${IDS.projR1}`, ["Acme Support Retainer", "Retainer", "£50.00", "Recent time"]],
+    [`/admin/projects/${IDS.projR1}`, ["Acme Support Retainer", "Retainer", "£50.00", "Recent time", "about £8,800.00 / month"]],
     [`/admin/projects/${IDS.projR1}?tab=time`, ["Time entries", "Sprint work", "INTERNAL-ENTRY-NOTE", "In progress", "£100.00", "£250.00", "£500.00"]],
     [`/admin/projects/${IDS.projR1}?tab=payments`, ["Monthly bills", "£850.00", "£550.00", "Overdue", "In progress", "£450.00"]],
     [`/admin/projects/${IDS.projR1}?tab=activity`, []],
@@ -232,8 +232,9 @@ try {
     [`/admin/projects/${IDS.projT1}?tab=tasks`, ["Logo design", "Landing page", "SEO audit", "Done value", "Still to do", "Owed"]],
     [`/admin/projects/${IDS.projT1}?tab=payments`, ["Owed tasks", "Landing page", "$350.00", "Overdue"]],
     ["/admin/prospects?kind=retainer", ["Rita Retainer", "$3,000.00/mo"]],
-    ["/admin/prospects/pr-ret", ["Rita Retainer", "Estimated monthly value", "$3,000.00/mo", "$40.00 per hour"]],
-    ["/admin/settings", ["Agreement template", "Export all data", "Time log as CSV", "Tasks as CSV"]],
+    ["/admin/prospects/pr-ret", ["Rita Retainer", "Estimated monthly value", "$3,000.00/mo", "$40.00 / hour", "about $7,040.00 / month"]],
+    ["/admin/payments", ["Payments", "Record payment", "Project: Acme Website Rebuild"]],
+    ["/admin/settings", ["Agreement template", "Export all data", "Time log as CSV", "Tasks as CSV", "Exchange rates", "USD to PHP", "GBP to PHP"]],
   ];
   for (const [p, needles] of adminPages) {
     await check(`admin GET ${p} is 200`, async () => {

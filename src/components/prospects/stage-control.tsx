@@ -11,7 +11,7 @@ import type { LostReason, Prospect, ProspectStage } from "@/lib/types";
 
 const ITEMS = toItems(STAGE_LABELS);
 /** The happy path, in order. Lost sits outside it. */
-const PATH: ProspectStage[] = ["new", "contacted", "proposal_sent", "negotiating", "won"];
+const PATH: ProspectStage[] = ["new", "contacted", "proposal_sent", "waiting_for_client", "negotiating", "won"];
 
 /** Visual only: how far along the pipeline this prospect is. */
 function Pipeline({ stage }: { stage: ProspectStage }) {

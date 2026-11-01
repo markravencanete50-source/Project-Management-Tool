@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
-import { CalendarCheck, FolderKanban, Hourglass, Repeat, Target, TrendingUp, Trophy, Wallet } from "lucide-react";
+import { CalendarCheck, FolderKanban, Hourglass, Repeat, TrendingUp, Trophy, Wallet } from "lucide-react";
+import { RecordPaymentButton } from "@/components/payments/record-payment";
 import { PageHeader } from "@/components/common/page-header";
 import { AcceptedChart } from "@/components/dashboard/accepted-chart";
 import { AnimatedNumber } from "@/components/dashboard/animated-number";
@@ -9,12 +10,14 @@ import { EarningsSection } from "@/components/dashboard/earnings-chart";
 import { KPI_NUMBER, KpiCard, KpiEmpty, KpiHint, MoneyKpi, PhpKpi } from "@/components/dashboard/kpi-card";
 import { MotionRoot, Reveal, Stagger } from "@/components/dashboard/motion";
 import { NeedsAttention } from "@/components/dashboard/needs-attention";
+import { PipelineCard } from "@/components/dashboard/pipeline-card";
 import { ProgressRing } from "@/components/dashboard/progress-ring";
 import { Sparkline } from "@/components/dashboard/sparkline";
 import { TrendBadge } from "@/components/dashboard/trend-badge";
 import { DASH_VIEW_COOKIE, type DashView } from "@/lib/dash-view";
-import { rateOf, timeAgo } from "@/lib/fx/convert";
-import { CURRENCIES, type Currency } from "@/lib/money";
+import { rateOf, sourceLabel, timeAgo } from "@/lib/fx/convert";
+import { sourceMix } from "@/lib/fx/overrides";
+import { CURRENCIES, currenciesIn, formatMoney, type Currency } from "@/lib/money";
 import { getDashboardData } from "@/server/data/dashboard";
 
 function chosenView(param: string | string[] | undefined, cookie: string | undefined): DashView {
@@ -54,14 +57,14 @@ export default async function DashboardPage({ searchParams }: PageProps<"/admin"
     data.activeRetainers > 0
       ? `${data.activeRetainers} active ${data.activeRetainers === 1 ? "retainer" : "retainers"}. Includes months still in progress.`
       : "Retainer months with logged time, in progress included";
-  const pipelineHint = data.pipelineIncludesRetainers ? "Open prospects, unweighted. Includes monthly retainers." : "Open prospects, unweighted";
 
   const rateRows = converted
     ? converted.rates.quotes.map((q) => ({
         currency: q.currency,
         rate: (rateOf(converted.rates, q.currency) ?? 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
         source: q.source,
-        updated: timeAgo(q.updatedAt),
+        sourceLabel: sourceLabel(q.source),
+        updated: q.source === "manual" ? "" : timeAgo(q.updatedAt),
       }))
     : [];
 
@@ -71,14 +74,20 @@ export default async function DashboardPage({ searchParams }: PageProps<"/admin"
         <PageHeader
           title="Dashboard"
           description="Money received, projects accepted and what needs your attention."
-          actions={<CurrencyViewToggle value={wanted} />}
+          actions={
+            <>
+              <RecordPaymentButton variant="outline" />
+              <CurrencyViewToggle value={wanted} />
+            </>
+          }
         />
 
         {wanted === "php" && !converted ? <FxUnavailableNotice /> : null}
         {view === "php" && converted ? (
           <FxInfo
             provider={converted.rates.provider}
-            updatedAgo={rateRows.length > 0 ? timeAgo(converted.rates.updatedAt) : null}
+            mix={sourceMix(converted.rates)}
+            updatedAgo={converted.rates.quotes.some((q) => q.source !== "manual") ? timeAgo(converted.rates.updatedAt) : null}
             stale={converted.rates.stale}
             rows={rateRows}
           />
@@ -135,7 +144,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/admin"
             <KpiHint>Projects in progress right now</KpiHint>
           </KpiCard>
 
-          <KpiCard label="Pending balance" icon={Hourglass} tone="warning" className="col-span-2 sm:col-span-1 xl:col-span-3">
+          <KpiCard label="Pending balance" icon={Hourglass} tone="warning" className="col-span-2 sm:col-span-1 xl:col-span-4">
             {view === "php" && converted ? (
               <PhpKpi
                 value={converted.pendingBalance}
@@ -148,28 +157,31 @@ export default async function DashboardPage({ searchParams }: PageProps<"/admin"
             )}
           </KpiCard>
 
-          <KpiCard label="Recurring billed this month" icon={Repeat} tone="violet" className="col-span-2 sm:col-span-1 xl:col-span-3">
+          <KpiCard label="Recurring billed this month" icon={Repeat} tone="violet" className="col-span-2 sm:col-span-1 xl:col-span-4">
+            <p className="-mb-2 text-xs font-medium text-muted-foreground">Billed so far</p>
             {view === "php" && converted ? (
-              <PhpKpi
-                value={converted.recurringBilledThisMonth}
-                original={data.recurringBilledThisMonth}
-                empty="No retainer time logged this month"
-                hint={retainerHint}
-              />
+              <PhpKpi value={converted.recurringBilledThisMonth} original={data.recurringBilledThisMonth} empty="No retainer time logged this month" />
             ) : (
-              <MoneyKpi value={data.recurringBilledThisMonth} empty="No retainer time logged this month" hint={retainerHint} />
+              <MoneyKpi value={data.recurringBilledThisMonth} empty="No retainer time logged this month" />
             )}
+            <div className="grid gap-1 border-t pt-3" data-testid="expected-this-month">
+              <p className="text-xs font-medium text-muted-foreground">Expected this month</p>
+              {view === "php" && converted ? (
+                <p className="text-base font-semibold tabular-nums">{formatMoney(converted.expectedThisMonth, "PHP")}</p>
+              ) : currenciesIn(data.expectedThisMonth).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No active retainers</p>
+              ) : (
+                currenciesIn(data.expectedThisMonth).map((c) => (
+                  <p key={c} className="text-base font-semibold tabular-nums">
+                    {formatMoney(data.expectedThisMonth[c] ?? 0, c)}
+                  </p>
+                ))
+              )}
+            </div>
+            <KpiHint>{retainerHint.replace(/[.]$/, "")}. Expected counts active retainers at their rate and working schedule.</KpiHint>
           </KpiCard>
 
-          <KpiCard label="Pipeline value" icon={Target} tone="info" className="col-span-2 sm:col-span-1 xl:col-span-3">
-            {view === "php" && converted ? (
-              <PhpKpi value={converted.pipelineValue} original={data.pipelineValue} empty="Your pipeline is empty" hint={pipelineHint} />
-            ) : (
-              <MoneyKpi value={data.pipelineValue} empty="Your pipeline is empty" hint={pipelineHint} />
-            )}
-          </KpiCard>
-
-          <KpiCard label={`Win rate, last ${WIN_RATE_DAYS} days`} icon={Trophy} tone="success" className="col-span-2 sm:col-span-1 xl:col-span-3">
+          <KpiCard label={`Win rate, last ${WIN_RATE_DAYS} days`} icon={Trophy} tone="success" className="col-span-2 sm:col-span-1 xl:col-span-4">
             {winRate.rate === null ? (
               <>
                 <KpiEmpty>No prospects closed in this period yet</KpiEmpty>
@@ -187,6 +199,12 @@ export default async function DashboardPage({ searchParams }: PageProps<"/admin"
               </>
             )}
           </KpiCard>
+          <PipelineCard
+            className="col-span-2 xl:col-span-12"
+            pipeline={data.pipeline}
+            php={view === "php" && converted ? converted.pipeline : null}
+            top={data.topProspects}
+          />
         </Stagger>
 
         <div className="mt-8">

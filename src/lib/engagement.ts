@@ -236,3 +236,19 @@ export function expectedFromInputs(
   const monthly = expectedMonthly(unit, rate, hoursPerDay, daysPerMonth);
   return { monthly, rates: equivalentRates(monthly, hoursPerDay, daysPerMonth), hoursPerDay, daysPerMonth };
 }
+
+/**
+ * The paired figures shown wherever a retainer rate appears: the rate per its
+ * own unit and the per-month amount worked out from the working schedule.
+ * `monthly` is null for a per-month rate (the rate IS the monthly figure, so it
+ * is shown once) and for a rate of zero.
+ */
+export function rateWithMonthly(
+  unit: RateUnit,
+  rate: number,
+  hoursPerDay: number = DEFAULT_HOURS_PER_DAY,
+  daysPerMonth: number = DEFAULT_DAYS_PER_MONTH,
+): { perUnit: number; unit: RateUnit; monthly: number | null } {
+  if (unit === "month" || !(rate > 0)) return { perUnit: rate, unit, monthly: null };
+  return { perUnit: rate, unit, monthly: expectedMonthly(unit, rate, hoursPerDay, daysPerMonth) };
+}

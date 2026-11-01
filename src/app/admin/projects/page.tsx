@@ -35,6 +35,8 @@ export default async function ProjectsPage() {
           tasksTotal,
           rate: project.rate,
           rateUnit: project.rateUnit,
+          hoursPerDay: project.hoursPerDay,
+          daysPerMonth: project.daysPerMonth,
           currency: project.currency,
           deadline: project.deadline,
           archived: Boolean(project.archivedAt),

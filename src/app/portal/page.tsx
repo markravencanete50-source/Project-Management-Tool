@@ -6,8 +6,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { ProjectStatusBadge } from "@/components/projects-core/project-status-badge";
 import { formatIsoDate } from "@/lib/dates";
 import { KindBadge } from "@/components/common/kind-badge";
-import { UNIT_LABELS } from "@/lib/billing";
-import { formatMoney } from "@/lib/money";
+import { RateWithMonthly } from "@/components/common/rate-with-monthly";
 import { listPortalProjects } from "@/server/data/projects";
 
 export const metadata = { title: "Your projects" };
@@ -54,9 +53,14 @@ export default async function PortalHomePage() {
                 {project.kind === "retainer" ? (
                   <p className="mt-auto text-sm text-muted-foreground">
                     {project.rateUnit === "week" ? "Billed weekly at" : "Billed monthly at"}{" "}
-                    <span className="font-semibold text-foreground tabular-nums">
-                      {formatMoney(project.rate, project.currency)} per {UNIT_LABELS[project.rateUnit ?? "hour"].singular}
-                    </span>
+                    <RateWithMonthly
+                      rate={project.rate}
+                      unit={project.rateUnit}
+                      currency={project.currency}
+                      hoursPerDay={project.hoursPerDay}
+                      daysPerMonth={project.daysPerMonth}
+                      className="font-semibold text-foreground"
+                    />
                   </p>
                 ) : (
                   <div className="mt-auto flex flex-col gap-2">

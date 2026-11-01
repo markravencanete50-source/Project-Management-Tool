@@ -1,6 +1,7 @@
 import "server-only";
 import { env } from "@/lib/env";
 import { buildTable, DISPLAY_CURRENCY, type RateQuote, type RateTable } from "@/lib/fx/convert";
+import { resolveRateTable, type FxOverrides } from "@/lib/fx/overrides";
 import { getRateTable } from "@/lib/fx/provider";
 import { CURRENCIES, type Currency } from "@/lib/money";
 
@@ -26,17 +27,31 @@ function stubbed(currencies: Currency[]): RateTable | null | undefined {
 }
 
 /**
- * Rates to PHP for the currencies the dashboard needs, or null when they cannot
- * be had. Never throws. Uses Wise when WISE_API_TOKEN is set, then free public
- * sources (see src/lib/fx/provider.ts). The token is read here and handed to
- * the provider; it is never logged.
+ * LIVE rates only (Wise when WISE_API_TOKEN is set, then free public sources;
+ * see src/lib/fx/provider.ts), or null when they cannot be had. Never throws.
+ * Manual rates are applied by loadRateTable AFTER this, so they are never part
+ * of anything cached here. The token is never logged.
  */
-export async function loadRateTable(currencies: Currency[]): Promise<RateTable | null> {
+export async function loadLiveRates(currencies: Currency[]): Promise<RateTable | null> {
   const wanted = CURRENCIES.filter((c) => currencies.includes(c));
   const stub = stubbed(wanted);
   if (stub !== undefined) return stub;
   try {
     return await getRateTable(wanted, { fetch, wiseToken: env().WISE_API_TOKEN });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Rates to PHP for the currencies the dashboard needs, or null when they cannot
+ * be had. A manual rate from Settings wins over any live one for its currency,
+ * and when every needed currency has one the network is not touched at all.
+ * Never throws.
+ */
+export async function loadRateTable(currencies: Currency[], overrides: FxOverrides = {}): Promise<RateTable | null> {
+  try {
+    return await resolveRateTable(currencies, overrides, loadLiveRates);
   } catch {
     return null;
   }

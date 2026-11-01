@@ -15,8 +15,9 @@ import { isFollowUpDue, LOST_REASON_LABELS, SOURCE_LABELS } from "@/components/p
 import { formatInstant, formatIsoDate, todayIso } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { KindBadge } from "@/components/common/kind-badge";
+import { RateWithMonthly } from "@/components/common/rate-with-monthly";
 import { estimatedValueLabel } from "@/lib/engagement";
-import { fromHundredths, UNIT_LABELS } from "@/lib/billing";
+import { fromHundredths } from "@/lib/billing";
 import { formatEstimate } from "@/components/prospects/labels";
 import { getConvertedLinks, getProspect, getProspectActivity } from "@/server/data/prospects";
 
@@ -119,9 +120,14 @@ export default async function ProspectPage({ params }: PageProps<"/admin/prospec
                 </DetailItem>
                 {prospect.engagementKind === "retainer" && prospect.rateUnit ? (
                   <DetailItem label="Rate">
-                    <span className="font-semibold tabular-nums">
-                      {formatMoney(prospect.rate, prospect.currency)} per {UNIT_LABELS[prospect.rateUnit].singular}
-                    </span>
+                    <RateWithMonthly
+                      rate={prospect.rate}
+                      unit={prospect.rateUnit}
+                      currency={prospect.currency}
+                      hoursPerDay={prospect.hoursPerDay}
+                      daysPerMonth={prospect.daysPerMonth}
+                      className="font-semibold"
+                    />
                   </DetailItem>
                 ) : null}
                 {prospect.engagementKind === "retainer" && prospect.rateUnit ? (

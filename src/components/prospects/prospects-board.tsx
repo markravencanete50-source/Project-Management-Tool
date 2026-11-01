@@ -31,7 +31,7 @@ import {
 import { formatIsoDate } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { KindBadge } from "@/components/common/kind-badge";
-import { formatEstimate } from "@/components/prospects/labels";
+import { formatEstimate, retainerRateLine } from "@/components/prospects/labels";
 import { PROSPECT_STAGES, type LostReason, type Prospect, type ProspectStage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -59,7 +59,7 @@ function CardBody({ p, today, interactive }: { p: Prospect; today: string; inter
     <>
       <div className="flex items-start justify-between gap-2">
         {interactive ? (
-          <Link href={`/admin/prospects/${p.id}`} className={cn(nameClass, "rounded-sm hover:underline")}>
+          <Link href={`/admin/prospects/${p.id}`} draggable={false} className={cn(nameClass, "rounded-sm hover:underline")}>
             {p.name}
           </Link>
         ) : (
@@ -67,6 +67,7 @@ function CardBody({ p, today, interactive }: { p: Prospect; today: string; inter
         )}
         {p.archivedAt ? <Badge variant="outline">Archived</Badge> : null}
       </div>
+      {retainerRateLine(p) ? <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">{retainerRateLine(p)}</div> : null}
       {line ? <div className="mt-0.5 truncate text-xs text-muted-foreground">{line}</div> : null}
       <div className="mt-2.5 flex items-center justify-between gap-2">
         <span className={cn("text-sm font-semibold tabular-nums", !p.estimatedValue && "font-normal text-muted-foreground")}>

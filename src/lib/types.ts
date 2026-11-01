@@ -8,8 +8,16 @@ import type { IsoDate } from "@/lib/dates";
 export const PROSPECT_SOURCES = ["referral", "upwork", "linkedin", "cold_outreach", "website", "other"] as const;
 export type ProspectSource = (typeof PROSPECT_SOURCES)[number];
 
-export const PROSPECT_STAGES = ["new", "contacted", "proposal_sent", "negotiating", "won", "lost"] as const;
+export const PROSPECT_STAGES = ["new", "contacted", "proposal_sent", "waiting_for_client", "negotiating", "won", "lost"] as const;
 export type ProspectStage = (typeof PROSPECT_STAGES)[number];
+
+/** Closed stages. Everything else in PROSPECT_STAGES is open (counts in the pipeline, never in win rate). */
+export const CLOSED_PROSPECT_STAGES: readonly ProspectStage[] = ["won", "lost"];
+export const isOpenStage = (stage: string | null | undefined): boolean =>
+  !!stage && (PROSPECT_STAGES as readonly string[]).includes(stage) && !CLOSED_PROSPECT_STAGES.includes(stage as ProspectStage);
+/** An unknown or missing stage from a stored document becomes "new" rather than breaking the board. */
+export const normalizeStage = (stage: unknown): ProspectStage =>
+  typeof stage === "string" && (PROSPECT_STAGES as readonly string[]).includes(stage) ? (stage as ProspectStage) : "new";
 
 export const LOST_REASONS = ["price", "timing", "no_response", "went_elsewhere", "other"] as const;
 export type LostReason = (typeof LOST_REASONS)[number];
@@ -201,6 +209,25 @@ export type Payment = {
   updatedAt: Date;
 };
 
+/**
+ * Money received that is not attached to any project: top-level
+ * standalonePayments/{id}. Counts as earnings on the dashboard only.
+ */
+export type StandalonePayment = {
+  id: string;
+  /** The client who paid, or null when it was someone else (then payerName says who). */
+  clientId: string | null;
+  payerName: string;
+  note: string;
+  currency: Currency;
+  amount: number;
+  paidOn: IsoDate;
+  method: PaymentMethod;
+  receiptPublicId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type AgreementSnapshot = {
   scope: string;
   price: number;
@@ -264,6 +291,8 @@ export type Settings = {
   businessName: string;
   businessEmail: string;
   agreementTemplate: string;
+  /** Manual PHP rates in 1/10000 PHP per 1 unit (56.1234 is 561234). Absent = live. */
+  fxOverrides: { USD?: number; GBP?: number };
 };
 
 /** Standard return shape for every server action. */

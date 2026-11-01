@@ -11,7 +11,7 @@ import { CURRENCIES, type Currency, type MoneyByCurrency } from "@/lib/money";
 export const DISPLAY_CURRENCY: Currency = "PHP";
 
 /** Where a quote came from. "stub" is only used by the end to end tests. */
-export type RateSource = "wise" | "open.er-api.com" | "frankfurter" | "stub";
+export type RateSource = "wise" | "open.er-api.com" | "frankfurter" | "stub" | "manual";
 
 /** 1 unit of `currency` is `rate` PHP. */
 export type RateQuote = {
@@ -79,10 +79,12 @@ export function covers(table: Pick<RateTable, "quotes">, currencies: Currency[])
 
 /** Build a table from quotes. The caller passes only the quotes it needs (PHP needs none). */
 export function buildTable(quotes: RateQuote[], stale = false): RateTable {
-  const oldest = quotes.reduce<string | null>((min, q) => (min === null || q.updatedAt < min ? q.updatedAt : min), null);
+  // Manual rates have no publish time and are not live, so they do not count here.
+  const live = quotes.filter((q) => q.source !== "manual");
+  const oldest = live.reduce<string | null>((min, q) => (min === null || q.updatedAt < min ? q.updatedAt : min), null);
   return {
     quotes,
-    provider: quotes.length > 0 && quotes.every((q) => q.source === "wise") ? "wise" : "market",
+    provider: live.length > 0 && live.every((q) => q.source === "wise") ? "wise" : "market",
     updatedAt: oldest ?? new Date(0).toISOString(),
     stale,
   };
@@ -100,9 +102,15 @@ export function timeAgo(iso: string, now: Date = new Date()): string {
   return `${days} days ago`;
 }
 
+/** Short label for the rate popover: "your rate", "Wise" or "market". */
+export function sourceLabel(source: RateSource): string {
+  return source === "manual" ? "your rate" : source === "wise" ? "Wise" : "market";
+}
+
 export const SOURCE_NAMES: Record<RateSource, string> = {
   wise: "Wise",
   "open.er-api.com": "open.er-api.com",
   frankfurter: "Frankfurter (ECB)",
   stub: "Test rates",
+  manual: "your rate",
 };

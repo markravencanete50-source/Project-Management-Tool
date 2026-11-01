@@ -148,8 +148,10 @@ export async function runBrowser({ base, cookies, ids, check }) {
       "/admin/prospects/pr-ret",
       "/admin?view=original",
       "/admin/settings",
+      "/admin/payments",
     ];
-    for (const p of adminPaths) await pageChecks(admin, p, "admin mobile");
+    // E2E_FAST=1 skips the per-page mobile overflow sweeps (they dominate the run time) while iterating.
+    if (!process.env.E2E_FAST) for (const p of adminPaths) await pageChecks(admin, p, "admin mobile");
 
     {
       const ctx = await context(cookies.admin, { viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
@@ -555,6 +557,236 @@ export async function runBrowser({ base, cookies, ids, check }) {
       await admin.waitForFunction(() => document.body.innerText.includes("Converted at"), null, { timeout: 10000 });
       return true;
     });
+
+    // ------------------------------------------------ pass: rates, pipeline, stage, payment only
+    {
+      const dctx = await context(cookies.admin, { viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
+      const desk = await dctx.newPage();
+      watch(desk, "admin desktop flows");
+      const text = (page) => page.evaluate(() => document.body.innerText);
+      const num = (s) => Number(String(s).replace(/[^0-9.]/g, ""));
+      const RATE = { GBP: 70, USD: 56, PHP: 1 };
+      const peso = (centavos) => `₱${(centavos / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      /** The open pipeline worked out straight from Firestore, so the checks do not depend on what earlier flows changed. */
+      const pipelineNow = async (usdRate = RATE.USD) => {
+        const snap = await db.collection("prospects").get();
+        const one = {};
+        const mon = {};
+        for (const d of snap.docs) {
+          const p = d.data();
+          if (p.archivedAt || p.stage === "won" || p.stage === "lost") continue;
+          const bucket = (p.engagementKind ?? "fixed") === "retainer" ? mon : one;
+          bucket[p.currency] = (bucket[p.currency] ?? 0) + (p.estimatedValue ?? 0);
+        }
+        const php = (b) => Object.entries(b).reduce((s, [c, v]) => s + Math.round(v * (c === "USD" ? usdRate : RATE[c])), 0);
+        return { one, mon, oneOff: php(one), monthly: php(mon), firstYear: php(one) + php(mon) * 12 };
+      };
+      /** The PHP figure printed in a dashboard card, found by the card's heading. */
+      const cardFigure = async (page, heading) => {
+        const t = await page.locator("h3", { hasText: heading }).first().locator("xpath=../..").innerText();
+        const m = /₱\s?([0-9,]+\.[0-9]{2})/.exec(t);
+        return m ? num(m[1]) : null;
+      };
+
+      await check("UI: set my own USD rate in Settings, see the dashboard use it, then reset to live", async () => {
+        await desk.goto(`${base}/admin?view=php`, { waitUntil: "networkidle" });
+        const before = await text(desk);
+        if (!before.includes("Converted at market rates")) return "expected live (stub) rates before any override";
+        const monthlyBefore = await desk.getByTestId("pipeline-monthly").innerText();
+        const expectBefore = await pipelineNow();
+        if (!monthlyBefore.includes(peso(expectBefore.monthly))) return `pipeline monthly before: ${monthlyBefore}, expected ${peso(expectBefore.monthly)}`;
+
+        await desk.goto(`${base}/admin/settings`, { waitUntil: "networkidle" });
+        if (!(await text(desk)).includes("Live now: 56.00")) return "the live rate hint is missing";
+        await desk.getByRole("radiogroup", { name: "USD rate source" }).getByRole("radio", { name: "My rate" }).click();
+        await desk.locator("#fx-USD").fill("60.5");
+        await desk.getByRole("button", { name: "Save settings" }).click();
+        await desk.getByText("Settings saved").first().waitFor({ timeout: 10000 });
+        await desk.waitForTimeout(400);
+        const stored = (await db.collection("settings").doc("app").get()).get("fxOverrides");
+        if (stored?.USD !== 605000 || stored?.GBP !== undefined) return `stored overrides ${JSON.stringify(stored)}`;
+
+        await desk.goto(`${base}/admin?view=php`, { waitUntil: "networkidle" });
+        const after = await text(desk);
+        if (!after.includes("Converted at your rates and market rates")) return "info line did not name your rates";
+        const monthly = await desk.getByTestId("pipeline-monthly").innerText();
+        const expectAfter = await pipelineNow(60.5);
+        if (!monthly.includes(peso(expectAfter.monthly))) return `pipeline monthly after: ${monthly}, expected ${peso(expectAfter.monthly)}`;
+        await desk.getByRole("button", { name: "Show the exchange rates used" }).click();
+        await desk.getByText("1 USD = 60.50 PHP").waitFor({ timeout: 5000 });
+        if (!(await desk.getByText("(your rate)").first().isVisible())) return "popover did not say your rate";
+        if (!(await text(desk)).includes("(market")) return "popover did not label the GBP rate as market";
+        await desk.keyboard.press("Escape");
+
+        // Invalid values are refused with a message.
+        await desk.goto(`${base}/admin/settings`, { waitUntil: "networkidle" });
+        await desk.locator("#fx-USD").fill("56.12345");
+        await desk.getByText("Enter a rate from 0.0001 to 1,000,000 with up to 4 decimals").waitFor({ timeout: 5000 });
+        await desk.locator("#fx-USD").fill("0");
+        await desk.getByText("Enter a rate from 0.0001").waitFor({ timeout: 5000 });
+
+        // Back to live.
+        await desk.goto(`${base}/admin/settings`, { waitUntil: "networkidle" });
+        await desk.getByRole("button", { name: "Use live rate" }).first().click();
+        await desk.getByRole("button", { name: "Save settings" }).click();
+        await desk.getByText("Settings saved").first().waitFor({ timeout: 10000 });
+        await desk.waitForTimeout(400);
+        const doc = await db.collection("settings").doc("app").get();
+        if (doc.get("fxOverrides")?.USD !== undefined) return `override still stored ${JSON.stringify(doc.get("fxOverrides"))}`;
+        await desk.goto(`${base}/admin?view=php`, { waitUntil: "networkidle" });
+        const monthlyLive = await desk.getByTestId("pipeline-monthly").innerText();
+        return monthlyLive.includes(peso(expectBefore.monthly)) || `pipeline monthly after reset: ${monthlyLive}`;
+      });
+
+      await check("UI: the pipeline card shows one-off, monthly (/mo) and first year in PHP and original views", async () => {
+        await desk.goto(`${base}/admin?view=php`, { waitUntil: "networkidle" });
+        const card = (await desk.getByTestId("pipeline-card").innerText()).replace(/TOP OPEN PROSPECTS/i, "Top open prospects");
+        const want = await pipelineNow();
+        for (const needle of [peso(want.oneOff), peso(want.monthly), peso(want.firstYear), "/mo", "Not weighted by win chance", "Top open prospects", "Wanda Waiting"]) {
+          if (!card.includes(needle)) return `PHP view missing ${needle}`;
+        }
+        if (want.firstYear !== want.oneOff + want.monthly * 12) return "first year is not one-off + monthly x 12";
+        await desk.goto(`${base}/admin?view=original`, { waitUntil: "networkidle" });
+        const orig = await desk.getByTestId("pipeline-card").innerText();
+        const usd = (m) => `$${(m / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+        const gbp = (m) => `£${(m / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+        const needles = ["/mo", want.one.USD ? usd(want.one.USD) : null, want.one.GBP ? gbp(want.one.GBP) : null, want.mon.USD ? usd(want.mon.USD) : null].filter(Boolean);
+        for (const needle of needles) {
+          if (!orig.includes(needle)) return `Original view missing ${needle}`;
+        }
+        const expected = await desk.getByTestId("expected-this-month").innerText();
+        return expected.includes("Expected this month") || `expected this month: ${expected}`;
+      });
+
+      await check("UI: drag a prospect into and out of Waiting for client, it persists and stays open", async () => {
+        await desk.goto(`${base}/admin/prospects?view=kanban`, { waitUntil: "networkidle" });
+        const waiting = desk.getByRole("region", { name: "Waiting for client" });
+        if (!(await waiting.innerText()).includes("Wanda Waiting")) return "seeded waiting prospect missing from its column";
+        const drag = async (name, target, expectStage) => {
+          const card = desk.locator('[role="group"]').filter({ hasText: name }).first();
+          const col = desk.getByRole("region", { name: target });
+          // The board scrolls sideways: bring the target column fully into view, then measure.
+          await col.scrollIntoViewIfNeeded();
+          await card.scrollIntoViewIfNeeded();
+          await col.scrollIntoViewIfNeeded();
+          const a = await card.boundingBox();
+          const b = await col.boundingBox();
+          if (b.x + b.width / 2 > 1270 || a.x < 0) throw new Error(`card or column not both visible (card x ${a.x}, column ${b.x}+${b.width})`);
+          // Grab the card by its lower part, away from the name link.
+          await desk.mouse.move(a.x + a.width / 2, a.y + a.height - 8);
+          await desk.mouse.down();
+          await desk.mouse.move(a.x + a.width / 2 + 24, a.y + a.height + 12, { steps: 5 });
+          await desk.mouse.move(b.x + b.width / 2, b.y + 140, { steps: 20 });
+          await desk.mouse.up();
+          // The board moves cards optimistically and shows no toast: wait for the stored stage instead.
+          for (let i = 0; i < 40; i++) {
+            if ((await db.collection("prospects").doc("pr-prop").get()).get("stage") === expectStage) break;
+            await desk.waitForTimeout(250);
+          }
+        };
+        const open = async () => (await desk.evaluate(() => document.body.innerText)).length;
+        void open;
+        await drag("Pia Proposal", "Waiting for client", "waiting_for_client");
+        if ((await db.collection("prospects").doc("pr-prop").get()).get("stage") !== "waiting_for_client") return "stage did not persist as waiting_for_client";
+        if ((await db.collection("prospects").doc("pr-prop").get()).get("closedAt")) return "an open stage must not set closedAt";
+        await desk.goto(`${base}/admin?view=original`, { waitUntil: "networkidle" });
+        const t = await text(desk);
+        if (!/top open prospects/i.test(t) || !/Pia Proposal/.test(t)) return "the waiting prospect should count in the pipeline and top list";
+        await desk.goto(`${base}/admin/prospects?view=kanban`, { waitUntil: "networkidle" });
+        await drag("Pia Proposal", "Proposal sent", "proposal_sent");
+        const stage = (await db.collection("prospects").doc("pr-prop").get()).get("stage");
+        return stage === "proposal_sent" || `stage after dragging out: ${stage}`;
+      });
+
+      await check("UI: record a payment only entry, see it on Payments and the dashboard, edit it, delete it", async () => {
+        const projectBefore = await (async () => {
+          await desk.goto(`${base}/admin/projects/${ids.projA1}?tab=payments`, { waitUntil: "networkidle" });
+          return text(desk);
+        })();
+        await desk.goto(`${base}/admin?view=php`, { waitUntil: "networkidle" });
+        const earnedBefore = await cardFigure(desk, "Earned this month");
+        const pendingBefore = await cardFigure(desk, "Pending balance");
+
+        await desk.getByRole("button", { name: "Record payment" }).first().click();
+        const dialog = desk.getByRole("dialog");
+        await dialog.getByRole("radio", { name: "Attach to a project" }).click();
+        await dialog.getByLabel("Project").waitFor({ timeout: 5000 });
+        await dialog.getByRole("radio", { name: "Payment only" }).click();
+        await dialog.getByLabel("Payer name").fill("Walk-in Maria");
+        await dialog.getByLabel("Amount").fill("123.45");
+        await dialog.getByLabel("Note (optional)").fill("STANDALONE-NOTE");
+        await dialog.getByRole("button", { name: "Record payment" }).click();
+        await desk.getByText("Payment recorded (no project)").first().waitFor({ timeout: 10000 });
+        await desk.waitForTimeout(500);
+        const snap = await db.collection("standalonePayments").get();
+        if (snap.size !== 1 || snap.docs[0].get("amount") !== 12345 || snap.docs[0].get("currency") !== "PHP") return `stored ${JSON.stringify(snap.docs.map((d) => d.data()))}`;
+        const sid = snap.docs[0].id;
+        const activity = await db.collection("activity").where("type", "==", "standalone_payment.recorded").get();
+        if (activity.size !== 1 || activity.docs[0].get("visibility") !== "internal") return "internal activity entry missing";
+
+        await desk.goto(`${base}/admin/payments`, { waitUntil: "networkidle" });
+        const list = await text(desk);
+        for (const needle of ["Walk-in Maria", "Payment only", "₱123.45", "STANDALONE-NOTE", "Project: Acme Website Rebuild"]) {
+          if (!list.includes(needle)) return `Payments page missing ${needle}`;
+        }
+        await desk.goto(`${base}/admin?view=php`, { waitUntil: "networkidle" });
+        const earnedAfter = await cardFigure(desk, "Earned this month");
+        if (Math.round((earnedAfter - earnedBefore) * 100) !== 12345) return `earned this month moved by ${earnedAfter - earnedBefore}, expected 123.45`;
+        if ((await cardFigure(desk, "Pending balance")) !== pendingBefore) return "pending balance changed";
+
+        // Filters.
+        await desk.goto(`${base}/admin/payments?source=standalone`, { waitUntil: "networkidle" });
+        const only = await text(desk);
+        if (!only.includes("Walk-in Maria") || only.includes("Project: Acme Website Rebuild")) return "the Payment only filter did not narrow the list";
+        await desk.goto(`${base}/admin/payments?source=project`, { waitUntil: "networkidle" });
+        if ((await text(desk)).includes("Walk-in Maria")) return "the Project payments filter still shows a payment only entry";
+
+        // Edit: attach it to a client.
+        await desk.goto(`${base}/admin/payments?source=standalone`, { waitUntil: "networkidle" });
+        await desk.getByRole("button", { name: "Edit" }).first().click();
+        const edit = desk.getByRole("dialog");
+        await edit.getByText("Edit payment").first().waitFor({ timeout: 5000 });
+        await edit.getByLabel("Who paid").selectOption(ids.clientA);
+        await edit.getByLabel("Amount").fill("200");
+        await edit.getByRole("button", { name: "Save changes" }).click();
+        await desk.getByText("Payment updated").first().waitFor({ timeout: 10000 });
+        await desk.waitForTimeout(500);
+        const edited = await db.collection("standalonePayments").doc(sid).get();
+        if (edited.get("amount") !== 20000 || edited.get("clientId") !== ids.clientA) return `edited doc ${JSON.stringify(edited.data())}`;
+
+        await desk.goto(`${base}/admin/clients/${ids.clientA}`, { waitUntil: "networkidle" });
+        if (!(await text(desk)).includes("Payments with no project")) return "the client page should list the payment only entry";
+
+        // The client never sees it.
+        const cctx = await context(cookies.a, { viewport: { width: 1280, height: 900 } });
+        const cp = await cctx.newPage();
+        for (const p of ["/portal", `/portal/projects/${ids.projA1}`, `/portal/projects/${ids.projR1}`]) {
+          await cp.goto(`${base}${p}`, { waitUntil: "networkidle" });
+          const t = await cp.evaluate(() => document.body.innerText);
+          if (t.includes("STANDALONE-NOTE") || t.includes("Payments with no project") || t.includes("₱200.00")) {
+            await cctx.close();
+            return `portal ${p} leaked a payment only entry`;
+          }
+        }
+        await cctx.close();
+
+        // Delete.
+        await desk.goto(`${base}/admin/payments?source=standalone`, { waitUntil: "networkidle" });
+        await desk.getByRole("button", { name: "Delete" }).first().click();
+        await desk.getByRole("dialog").getByRole("button", { name: "Delete payment" }).click();
+        await desk.getByText("Payment deleted").first().waitFor({ timeout: 10000 });
+        await desk.waitForTimeout(500);
+        if (!(await db.collection("standalonePayments").get()).empty) return "payment only entry was not deleted";
+        await desk.goto(`${base}/admin?view=php`, { waitUntil: "networkidle" });
+        if ((await cardFigure(desk, "Earned this month")) !== earnedBefore) return "earned this month did not return after deleting";
+
+        // Project finance never moved.
+        await desk.goto(`${base}/admin/projects/${ids.projA1}?tab=payments`, { waitUntil: "networkidle" });
+        return (await text(desk)) === projectBefore || "the project payments tab changed";
+      });
+
+      await dctx.close();
+    }
 
     await adminCtx.close();
 

@@ -1,8 +1,8 @@
 "use server";
 
 import { z } from "zod";
-import { requireAny } from "@/lib/auth/session";
-import { projectFolder, signUpload } from "@/lib/cloudinary";
+import { requireAdmin, requireAny } from "@/lib/auth/session";
+import { projectFolder, signUpload, STANDALONE_RECEIPT_FOLDER } from "@/lib/cloudinary";
 import { canAccessProject } from "@/server/data/access";
 import { col } from "@/server/data/refs";
 import { projectFromDoc } from "@/server/data/convert";
@@ -11,7 +11,7 @@ import { run, UserError } from "@/server/action";
 
 const input = z.object({
   projectId: z.string().min(1),
-  purpose: z.enum(["receipts", "revisions"]),
+  purpose: z.enum(["receipts", "revisions", "standalone-receipts"]),
   resourceType: z.enum(["raw", "image"]),
 });
 
@@ -19,6 +19,10 @@ const input = z.object({
 export async function getUploadSignature(raw: z.input<typeof input>) {
   return run(async () => {
     const { projectId, purpose, resourceType } = input.parse(raw);
+    if (purpose === "standalone-receipts") {
+      await requireAdmin();
+      return signUpload(STANDALONE_RECEIPT_FOLDER, resourceType);
+    }
     const session = await requireAny();
     if (purpose === "receipts" && session.role !== "admin") throw new UserError("Not allowed");
     const snap = await col.projects().doc(projectId).get();

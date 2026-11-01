@@ -6,6 +6,7 @@ import { SectionHeader } from "@/components/common/section-header";
 import { AnimatedBar } from "@/components/motion/animated-bar";
 import { Badge } from "@/components/ui/badge";
 import { KindBadge } from "@/components/common/kind-badge";
+import { RateWithMonthly } from "@/components/common/rate-with-monthly";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -16,12 +17,17 @@ import { formatMoney } from "@/lib/money";
 import { formatInstant, formatIsoDate } from "@/lib/dates";
 import { getClient } from "@/server/data/clients";
 import { listClientProjects } from "@/server/data/projects";
+import { listStandaloneForClient } from "@/server/data/standalone-payments";
+import { METHOD_LABELS } from "@/components/payments/labels";
+import { currenciesIn } from "@/lib/money";
+import { ledgerTotals } from "@/lib/standalone-payments";
 
 export const metadata = { title: "Client" };
 
 export default async function ClientDetailPage({ params }: PageProps<"/admin/clients/[id]">) {
   const { id } = await params;
-  const [client, projects] = await Promise.all([getClient(id), listClientProjects(id)]);
+  const [client, projects, standalone] = await Promise.all([getClient(id), listClientProjects(id), listStandaloneForClient(id)]);
+  const standaloneTotals = ledgerTotals(standalone);
   const archived = Boolean(client.archivedAt);
 
   return (
@@ -141,11 +147,19 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
                   )}
                   <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
                     <span className="font-medium tabular-nums">
-                      {project.kind === "retainer"
-                        ? `${formatMoney(project.rate, project.currency)} / ${project.rateUnit ?? "hour"}`
-                        : project.kind === "tasks"
-                          ? "Per task"
-                          : formatMoney(project.contractValue, project.currency)}
+                      {project.kind === "retainer" ? (
+                        <RateWithMonthly
+                          rate={project.rate}
+                          unit={project.rateUnit}
+                          currency={project.currency}
+                          hoursPerDay={project.hoursPerDay}
+                          daysPerMonth={project.daysPerMonth}
+                        />
+                      ) : project.kind === "tasks" ? (
+                        "Per task"
+                      ) : (
+                        formatMoney(project.contractValue, project.currency)
+                      )}
                     </span>
                     <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                       <CalendarClock className="size-3.5" aria-hidden="true" />
@@ -157,6 +171,31 @@ export default async function ClientDetailPage({ params }: PageProps<"/admin/cli
             </ul>
           )}
         </section>
+
+        {standalone.length > 0 ? (
+          <section className="flex flex-col gap-4" data-testid="client-standalone-payments">
+            <SectionHeader
+              title="Payments with no project"
+              description={`Money received from this client that is not attached to a project. Total: ${currenciesIn(standaloneTotals)
+                .map((c) => formatMoney(standaloneTotals[c] ?? 0, c))
+                .join(" + ")}.`}
+            />
+            <ul className="divide-y overflow-hidden rounded-xl border bg-card">
+              {standalone.map((p) => (
+                <li key={p.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3 text-sm">
+                  <span className="font-semibold tabular-nums">{formatMoney(p.amount, p.currency)}</span>
+                  <span className="min-w-0 flex-1 text-muted-foreground">
+                    {formatIsoDate(p.paidOn)}, {METHOD_LABELS[p.method]}
+                    {p.note ? `, ${p.note}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <Link href="/admin/payments" className="text-sm font-medium text-primary underline-offset-4 hover:underline">
+              Open all payments
+            </Link>
+          </section>
+        ) : null}
       </div>
     </>
   );

@@ -1,11 +1,11 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { Building2, FileSignature, RotateCcw, ScrollText } from "lucide-react";
+import { Building2, FileSignature, Landmark, RotateCcw, ScrollText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,7 +13,98 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegen
 import { SettingsSection } from "@/components/settings/settings-section";
 import { saveSettings } from "@/server/actions/settings";
 import { settingsSchema, type SettingsInput } from "@/lib/validation/settings";
+import { SegmentedControl } from "@/components/dashboard/segmented-control";
+import { OVERRIDABLE, parseRateInput, unitsToInput, type OverridableCurrency } from "@/lib/fx/overrides";
 import { cn } from "@/lib/utils";
+
+export type LiveRateHint = { rate: string; raw: number; label: string };
+
+/** One currency: "Live rate" or "My rate", the number input, the live hint and a one-click reset. */
+function FxRateRow({
+  currency,
+  form,
+  live,
+}: {
+  currency: OverridableCurrency;
+  form: ReturnType<typeof useForm<SettingsInput>>;
+  live: LiveRateHint | undefined;
+}) {
+  const path = `fxOverrides.${currency}` as const;
+  const stored = form.getValues(path);
+  const [mode, setMode] = useState<"live" | "mine">(typeof stored === "number" && !Number.isNaN(stored) ? "mine" : "live");
+  const [text, setText] = useState(typeof stored === "number" && !Number.isNaN(stored) ? unitsToInput(stored) : "");
+  const error = form.formState.errors.fxOverrides?.[currency];
+  const inputId = `fx-${currency}`;
+
+  function push(next: string) {
+    setText(next);
+    form.setValue(path, parseRateInput(next) ?? Number.NaN, { shouldDirty: true, shouldValidate: true });
+  }
+
+  function change(next: "live" | "mine") {
+    if (next === mode) return;
+    setMode(next);
+    if (next === "live") {
+      form.setValue(path, null, { shouldDirty: true, shouldValidate: true });
+    } else {
+      // Start from the live rate (trimmed to 4 decimals) so the field is never empty.
+      const start = text || (live ? String(Math.round(live.raw * 10000) / 10000) : "");
+      push(start);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border bg-card p-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <p className="text-sm font-medium">
+          {currency} to PHP
+          <span className="ml-2 font-normal text-muted-foreground tabular-nums">
+            {live ? `Live now: ${live.rate}, ${live.label}` : "Live rate not available right now"}
+          </span>
+        </p>
+        <SegmentedControl<"live" | "mine">
+          label={`${currency} rate source`}
+          value={mode}
+          onChange={change}
+          options={[
+            { value: "live", label: "Live rate" },
+            { value: "mine", label: "My rate" },
+          ]}
+        />
+      </div>
+      {mode === "mine" ? (
+        <Field data-invalid={!!error}>
+          <FieldLabel htmlFor={inputId}>
+            1 {currency} = <span className="sr-only">how many</span> PHP
+          </FieldLabel>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground tabular-nums">1 {currency} =</span>
+            <Input
+              id={inputId}
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="56.1234"
+              value={text}
+              onChange={(e) => push(e.target.value)}
+              aria-invalid={!!error}
+              className="w-36 tabular-nums"
+            />
+            <span className="text-sm text-muted-foreground">PHP</span>
+            <Button type="button" variant="ghost" size="sm" onClick={() => change("live")}>
+              <RotateCcw data-icon="inline-start" />
+              Use live rate
+            </Button>
+          </div>
+          <FieldDescription>Up to 4 decimal places. Used for every {currency} amount on the dashboard, including past payments.</FieldDescription>
+          <FieldError errors={[error]} />
+        </Field>
+      ) : (
+        <p className="text-sm text-muted-foreground">The dashboard uses the live {currency} rate.</p>
+      )}
+    </div>
+  );
+}
 
 export const TEMPLATE_PLACEHOLDERS: { key: string; meaning: string }[] = [
   { key: "{{businessName}}", meaning: "Your business name" },
@@ -38,8 +129,18 @@ const ACCEPTED_OPTIONS: { value: SettingsInput["acceptedRule"]; title: string; h
   { value: "deposit_paid", title: "The deposit is paid in full", hint: "The project becomes active once the deposit is covered." },
 ];
 
-export function SettingsForm({ initial, defaultTemplate }: { initial: SettingsInput; defaultTemplate: string }) {
+export function SettingsForm({
+  initial,
+  defaultTemplate,
+  liveRates = {},
+}: {
+  initial: SettingsInput;
+  defaultTemplate: string;
+  liveRates?: Partial<Record<string, LiveRateHint>>;
+}) {
   const router = useRouter();
+  // Bumped on Discard so the rate rows remount from the reset values.
+  const [discards, setDiscards] = useState(0);
   const form = useForm<SettingsInput>({ resolver: zodResolver(settingsSchema), defaultValues: initial });
   const errors = form.formState.errors;
   const { isDirty, isSubmitting } = form.formState;
@@ -152,6 +253,19 @@ export function SettingsForm({ initial, defaultTemplate }: { initial: SettingsIn
       </SettingsSection>
 
       <SettingsSection
+        icon={<Landmark />}
+        title="Exchange rates"
+        description="The dashboard shows money in PHP. Use the live rate, or set your own for USD and GBP. A rate you set always wins."
+      >
+        <FieldGroup>
+          {OVERRIDABLE.map((c) => (
+            <FxRateRow key={`${c}-${discards}`} currency={c} form={form} live={liveRates[c]} />
+          ))}
+          <p className="text-xs text-muted-foreground">PHP to PHP is always 1. When every currency in use has your rate, no live rate is looked up.</p>
+        </FieldGroup>
+      </SettingsSection>
+
+      <SettingsSection
         icon={<ScrollText />}
         title="Agreement template"
         description="Plain text. Placeholders in double braces are filled in for each project."
@@ -227,7 +341,10 @@ export function SettingsForm({ initial, defaultTemplate }: { initial: SettingsIn
         </p>
         <div className="flex shrink-0 items-center gap-2">
           {isDirty ? (
-            <Button type="button" variant="ghost" disabled={isSubmitting} onClick={() => form.reset(initial)}>
+            <Button type="button" variant="ghost" disabled={isSubmitting} onClick={() => {
+                form.reset(initial);
+                setDiscards((n) => n + 1);
+              }}>
               Discard
             </Button>
           ) : null}

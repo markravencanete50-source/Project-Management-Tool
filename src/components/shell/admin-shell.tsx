@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AdminNav, NAV_ITEMS } from "@/components/shell/admin-nav";
+import { RecordPaymentHost } from "@/components/payments/record-payment";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { ThemeToggle } from "@/components/shell/theme-toggle";
 import { UserMenu } from "@/components/shell/user-menu";
@@ -183,6 +184,7 @@ export function AdminShell({
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-8 md:py-8">{children}</main>
       </div>
       <CommandPalette open={palette} onOpenChange={setPalette} />
+      <RecordPaymentHost />
     </div>
   );
 }

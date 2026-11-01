@@ -28,6 +28,33 @@ export async function runMatrix({ browser, base, cookies, ids, shots, host }) {
   const adminPages = [
     ["dashboard-php", "/admin?view=php"],
     ["dashboard-original", "/admin?view=original"],
+    [
+      "dashboard-fx-popover",
+      "/admin?view=php",
+      async (page) => {
+        await page.getByRole("button", { name: "Show the exchange rates used" }).click();
+        await page.waitForTimeout(500);
+      },
+    ],
+    ["payments", "/admin/payments"],
+    [
+      "record-payment-only",
+      "/admin/payments",
+      async (page) => {
+        await page.getByRole("button", { name: "Record payment" }).first().click();
+        await page.getByRole("dialog").getByLabel("Payer name").waitFor({ timeout: 8000 });
+        await page.waitForTimeout(500);
+      },
+    ],
+    [
+      "record-payment-project",
+      "/admin/payments",
+      async (page) => {
+        await page.getByRole("button", { name: "Record payment" }).first().click();
+        await page.getByRole("dialog").getByRole("radio", { name: "Attach to a project" }).click();
+        await page.waitForTimeout(600);
+      },
+    ],
     ["prospects-table", "/admin/prospects"],
     ["prospects-board", "/admin/prospects?view=kanban"],
     ["prospect-detail", "/admin/prospects/pr-due"],
@@ -127,7 +154,7 @@ export async function runMatrix({ browser, base, cookies, ids, shots, host }) {
   for (const size of SIZES) {
     for (const theme of THEMES) {
       for (const [cookie, allPages] of groups) {
-        const pages = only ? allPages.filter(([name]) => name.includes(only)) : allPages;
+        const pages = only ? allPages.filter(([name]) => only.split(",").some((o) => name.includes(o))) : allPages;
         if (pages.length === 0) continue;
         const ctx = await browser.newContext({
           viewport: size.viewport,

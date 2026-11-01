@@ -4,6 +4,8 @@ import { requireAdmin } from "@/lib/auth/session";
 import { db } from "@/lib/firebase/admin";
 import { col } from "@/server/data/refs";
 import { loadRateTable } from "@/server/data/fx";
+import { standaloneFromSnap } from "@/server/data/standalone-payments";
+import { getSettings } from "@/server/data/settings";
 import { fromDoc, fromDocs, projectsFromDocs, prospectsFromDocs } from "@/server/data/convert";
 import {
   buildDashboard,
@@ -29,7 +31,7 @@ const projectIdOf = (ref: DocumentReference) => ref.parent.parent!.id;
  */
 export async function getDashboardData(opts: { convert?: boolean } = {}): Promise<DashboardData> {
   await requireAdmin();
-  const [projectsSnap, clientsSnap, prospectsSnap, paymentsSnap, scheduleSnap, revisionsSnap, entriesSnap, tasksSnap] = await Promise.all([
+  const [projectsSnap, clientsSnap, prospectsSnap, paymentsSnap, scheduleSnap, revisionsSnap, entriesSnap, tasksSnap, standaloneSnap] = await Promise.all([
     col.projects().get(),
     col.clients().get(),
     col.prospects().get(),
@@ -38,6 +40,7 @@ export async function getDashboardData(opts: { convert?: boolean } = {}): Promis
     db().collectionGroup("revisions").get(),
     db().collectionGroup("timeEntries").get(),
     db().collectionGroup("tasks").get(),
+    col.standalonePayments().get(),
   ]);
 
   const projects: DashProject[] = projectsFromDocs(projectsSnap);
@@ -67,9 +70,14 @@ export async function getDashboardData(opts: { convert?: boolean } = {}): Promis
   });
 
   // Rates are only fetched for the PHP view, and only for currencies actually in use.
+  // Manual rates from Settings are read fresh and applied by loadRateTable after the (cached) live fetch.
+  const standalonePayments = standaloneFromSnap(standaloneSnap).map((s) => ({ amount: s.amount, paidOn: s.paidOn, currency: s.currency }));
   const rates = opts.convert
-    ? await loadRateTable([...new Set([...projects.map((p) => p.currency), ...prospects.map((p) => p.currency)])])
+    ? await loadRateTable(
+        [...new Set([...projects.map((p) => p.currency), ...prospects.map((p) => p.currency), ...standalonePayments.map((s) => s.currency)])],
+        (await getSettings()).fxOverrides,
+      )
     : undefined;
 
-  return buildDashboard({ projects, clients, prospects, payments, schedule, revisions, timeEntries, tasks, rates });
+  return buildDashboard({ projects, clients, prospects, payments, standalonePayments, schedule, revisions, timeEntries, tasks, rates });
 }

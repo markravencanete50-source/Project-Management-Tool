@@ -9,6 +9,14 @@ export type UploadPurpose = "agreements" | "signed" | "signatures" | "receipts" 
 export const ROOT = "pmt";
 export const BACKUP_FOLDER = `${ROOT}/backups`;
 
+/** Receipts for payment-only entries (not tied to a project). Admin only: /api/files serves them to admins alone. */
+export const STANDALONE_RECEIPT_FOLDER = `${ROOT}/standalone/receipts`;
+export function isStandaloneReceipt(storedId: string): boolean {
+  if (!/^(raw|image):/.test(storedId)) return false;
+  const { publicId } = parseStoredId(storedId);
+  return publicId.startsWith(`${STANDALONE_RECEIPT_FOLDER}/`) && !publicId.includes("..");
+}
+
 export function projectFolder(projectId: string, purpose: UploadPurpose): string {
   return `${ROOT}/projects/${projectId}/${purpose}`;
 }

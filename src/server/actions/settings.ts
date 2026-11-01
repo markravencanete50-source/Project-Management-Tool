@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth/session";
+import { FieldValue } from "firebase-admin/firestore";
 import { db } from "@/lib/firebase/admin";
 import { TZ } from "@/lib/dates";
 import { col } from "@/server/data/refs";
@@ -20,7 +21,12 @@ export async function saveSettings(raw: SettingsInput) {
     await requireAdmin();
 
     const batch = db().batch();
-    batch.set(col.settings(), { ...input, timezone: TZ }, { merge: true });
+    // A null rate means "back to live": delete the key (a merge would keep the old value otherwise).
+    const fxOverrides = {
+      USD: input.fxOverrides.USD ?? FieldValue.delete(),
+      GBP: input.fxOverrides.GBP ?? FieldValue.delete(),
+    };
+    batch.set(col.settings(), { ...input, fxOverrides, timezone: TZ }, { merge: true });
     logActivity(batch, {
       type: "settings.updated",
       message: "Settings updated",
@@ -30,5 +36,7 @@ export async function saveSettings(raw: SettingsInput) {
     await batch.commit();
 
     revalidatePath("/admin/settings");
+    // The dashboard converts with these rates, so it must not serve a stale render.
+    revalidatePath("/admin");
   });
 }

@@ -1,7 +1,7 @@
 import "server-only";
 import { Timestamp, type DocumentSnapshot, type QuerySnapshot } from "firebase-admin/firestore";
 import { DEFAULT_DAYS_PER_MONTH, DEFAULT_HOURS_PER_DAY, normalizeProspectEngagement } from "@/lib/engagement";
-import type { Project, Prospect } from "@/lib/types";
+import { normalizeStage, type Project, type Prospect } from "@/lib/types";
 
 function plain(value: unknown): unknown {
   if (value instanceof Timestamp) return value.toDate();
@@ -38,7 +38,7 @@ export function projectsFromDocs(snap: QuerySnapshot): Project[] {
 /** A prospect document with the engagement fields normalised (missing kind means fixed). */
 export function prospectFromDoc(snap: DocumentSnapshot): Prospect {
   const doc = fromDoc<Prospect>(snap);
-  return { ...doc, ...normalizeProspectEngagement(doc) };
+  return { ...doc, stage: normalizeStage(doc.stage), ...normalizeProspectEngagement(doc) };
 }
 
 export function prospectsFromDocs(snap: QuerySnapshot): Prospect[] {

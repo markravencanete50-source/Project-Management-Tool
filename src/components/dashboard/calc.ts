@@ -5,6 +5,8 @@ import { addDaysIso, formatMonthKey, lastNMonths, monthKeyOf, monthKeyOfInstant,
 import { derivedBillLines, financeFor } from "@/lib/billing";
 import { earningsByMonth } from "@/lib/finance";
 import { convertMoney, DISPLAY_CURRENCY, type RateTable } from "@/lib/fx/convert";
+import { DEFAULT_DAYS_PER_MONTH, DEFAULT_HOURS_PER_DAY, expectedMonthly } from "@/lib/engagement";
+import { convertMinor, rateOf } from "@/lib/fx/convert";
 import { addMoney, CURRENCIES, type Currency, type MoneyByCurrency } from "@/lib/money";
 import { REVISION_WAITING_ON_ADMIN } from "@/lib/projects";
 import type { Project, ProjectStatus, Prospect, RevisionStatus, ScheduleLine, Task, TimeEntry } from "@/lib/types";
@@ -18,13 +20,38 @@ export type DashProject = Pick<
   "id" | "clientId" | "title" | "status" | "currency" | "contractValue" | "acceptedAt" | "archivedAt"
 > &
   // Absent on documents written before engagement kinds: those are fixed projects.
-  Partial<Pick<Project, "kind" | "rate" | "rateUnit" | "startDate" | "endDate">>;
+  Partial<Pick<Project, "kind" | "rate" | "rateUnit" | "startDate" | "endDate" | "hoursPerDay" | "daysPerMonth">>;
 export type DashProspect = Pick<
   Prospect,
   "id" | "name" | "company" | "stage" | "estimatedValue" | "currency" | "nextFollowUp" | "closedAt" | "archivedAt"
 > &
   // Absent on prospects written before engagement kinds: those are fixed.
   Partial<Pick<Prospect, "engagementKind">>;
+
+/** Open-pipeline potential, per currency, in minor units. Unweighted: no win chance is applied. */
+export type PipelineBreakdown = {
+  /** Estimated value of open fixed and task prospects. */
+  oneOff: MoneyByCurrency;
+  /** Sum of the monthly values of open retainer prospects. */
+  monthly: MoneyByCurrency;
+  /** oneOff + monthly * 12, a projection and not a forecast. */
+  firstYear: MoneyByCurrency;
+  /** Open prospects by kind. */
+  counts: { fixed: number; retainer: number; tasks: number; total: number };
+};
+
+export type TopProspect = {
+  id: string;
+  name: string;
+  kind: "fixed" | "retainer" | "tasks";
+  stage: Prospect["stage"];
+  /** The prospect's own estimated value (monthly for a retainer). */
+  amount: number;
+  currency: Currency;
+  monthly: boolean;
+};
+/** A payment-only entry: earnings with no project. It never touches balances, overdue or progress. */
+export type DashStandalonePayment = { amount: number; paidOn: IsoDate; currency: Currency };
 export type DashPayment = { projectId: string; amount: number; paidOn: IsoDate };
 export type DashScheduleLine = ScheduleLine & { projectId: string };
 export type DashTimeEntry = Pick<TimeEntry, "date" | "quantityHundredths"> & { projectId: string };
@@ -37,6 +64,8 @@ export type DashboardInput = {
   clients: { id: string; name: string }[];
   prospects: DashProspect[];
   payments: DashPayment[];
+  /** Payment-only entries. Counted as earnings (cards, charts, deltas, PHP) and nowhere else. */
+  standalonePayments?: DashStandalonePayment[];
   schedule: DashScheduleLine[];
   revisions: DashRevision[];
   /** Retainer time entries and task documents. Optional so fixed-only callers need not pass them. */
@@ -113,6 +142,10 @@ export type ConvertedDashboard = {
   pendingBalance: number;
   pipelineValue: number;
   recurringBilledThisMonth: number;
+  /** Expected monthly amount of active retainers, in PHP. */
+  expectedThisMonth: number;
+  /** The open pipeline pieces in PHP; firstYear = oneOff + monthly * 12 exactly. */
+  pipeline: { oneOff: number; monthly: number; firstYear: number };
   /** Zero or one series, in PHP. */
   earningsSeries: EarningsSeries[];
   weeklyEarningsSeries: WeeklyEarningsSeries[];
@@ -131,6 +164,12 @@ export type DashboardData = {
   /** Live retainers that are active, for the card hint. */
   activeRetainers: number;
   pipelineValue: MoneyByCurrency;
+  /** Expected monthly total of active retainers (sum of rate-based monthly amounts), per currency. */
+  expectedThisMonth: MoneyByCurrency;
+  /** One-off, monthly and first-year potential of open prospects, and counts by kind. */
+  pipeline: PipelineBreakdown;
+  /** Up to 5 open prospects with the most potential, biggest first. */
+  topProspects: TopProspect[];
   /** True when at least one open prospect is a retainer, whose value is monthly. */
   pipelineIncludesRetainers: boolean;
   /** The PHP view, or null when no rates were given. */
@@ -378,6 +417,93 @@ export function winRate(
   return { won, lost, rate: closed === 0 ? null : won / closed };
 }
 
+/**
+ * Every payment that counts as earnings: project payments tagged with their
+ * project's currency, plus payment-only entries. Pending balance and overdue are
+ * computed from project payments alone and never see the standalone ones.
+ */
+export function mergeEarnings(
+  payments: DashPayment[],
+  projectById: Map<string, { currency: Currency }>,
+  standalone: DashStandalonePayment[],
+): { amount: number; paidOn: IsoDate; currency: Currency }[] {
+  const fromProjects = payments.flatMap((p) => {
+    const project = projectById.get(p.projectId);
+    return project ? [{ amount: p.amount, paidOn: p.paidOn, currency: project.currency }] : [];
+  });
+  return [...fromProjects, ...standalone.map((s) => ({ amount: s.amount, paidOn: s.paidOn, currency: s.currency }))];
+}
+
+/** What the active retainers are expected to bill in a month at their rates and schedules. On hold and completed are excluded. */
+export function expectedMonthlyTotal(projects: DashProject[]): MoneyByCurrency {
+  const out: MoneyByCurrency = {};
+  for (const p of projects) {
+    if (p.archivedAt || p.kind !== "retainer" || p.status !== "active" || !p.rateUnit) continue;
+    const monthly = expectedMonthly(p.rateUnit, p.rate ?? 0, p.hoursPerDay ?? DEFAULT_HOURS_PER_DAY, p.daysPerMonth ?? DEFAULT_DAYS_PER_MONTH);
+    if (monthly > 0) addMoney(out, p.currency, monthly);
+  }
+  return out;
+}
+
+const isOpenProspect = (p: DashProspect) => !p.archivedAt && p.stage !== "won" && p.stage !== "lost";
+
+/** One-off, monthly and first-year potential of the OPEN prospects, per currency, plus counts by kind. */
+export function pipelineBreakdown(prospects: DashProspect[]): PipelineBreakdown {
+  const oneOff: MoneyByCurrency = {};
+  const monthly: MoneyByCurrency = {};
+  const counts = { fixed: 0, retainer: 0, tasks: 0, total: 0 };
+  for (const p of prospects.filter(isOpenProspect)) {
+    const kind = p.engagementKind ?? "fixed";
+    counts[kind]++;
+    counts.total++;
+    if (p.estimatedValue <= 0) continue;
+    addMoney(kind === "retainer" ? monthly : oneOff, p.currency, p.estimatedValue);
+  }
+  const firstYear: MoneyByCurrency = {};
+  for (const c of CURRENCIES) {
+    const total = (oneOff[c] ?? 0) + (monthly[c] ?? 0) * 12;
+    if (total > 0) firstYear[c] = total;
+  }
+  return { oneOff, monthly, firstYear, counts };
+}
+
+/**
+ * The PHP pieces of a breakdown. oneOff and monthly are converted on their own
+ * and the first year is built from those two rounded numbers, so the parts add
+ * up to the total exactly.
+ */
+export function convertPipeline(b: PipelineBreakdown, rates: Pick<RateTable, "quotes">): { oneOff: number; monthly: number; firstYear: number } {
+  const oneOff = convertMoney(b.oneOff, rates);
+  const monthly = convertMoney(b.monthly, rates);
+  return { oneOff, monthly, firstYear: oneOff + monthly * 12 };
+}
+
+/**
+ * The open prospects with the most potential: first-year value for a retainer
+ * (monthly * 12), the estimate otherwise. Ranked in PHP when rates are given
+ * (currencies cannot be compared otherwise), by raw value when not.
+ */
+export function topProspects(prospects: DashProspect[], rates?: Pick<RateTable, "quotes"> | null, limit = 5): TopProspect[] {
+  const ranked = prospects
+    .filter((p) => isOpenProspect(p) && p.estimatedValue > 0)
+    .map((p) => {
+      const kind = p.engagementKind ?? "fixed";
+      const potential = p.estimatedValue * (kind === "retainer" ? 12 : 1);
+      const rate = rates ? rateOf(rates, p.currency) : 1;
+      return { p, kind, key: rate === null ? potential : convertMinor(potential, rate) };
+    })
+    .sort((a, b) => b.key - a.key || a.p.name.localeCompare(b.p.name));
+  return ranked.slice(0, limit).map(({ p, kind }) => ({
+    id: p.id,
+    name: p.name,
+    kind,
+    stage: p.stage,
+    amount: p.estimatedValue,
+    currency: p.currency,
+    monthly: kind === "retainer",
+  }));
+}
+
 export function buildDashboard(input: DashboardInput): DashboardData {
   const now = input.now ?? new Date();
   const today = todayIso(now);
@@ -391,10 +517,7 @@ export function buildDashboard(input: DashboardInput): DashboardData {
   const live = input.projects.filter((p) => !p.archivedAt);
 
   // Earnings use every project's payments, tagged with the project's currency.
-  const taggedPayments = input.payments.flatMap((p) => {
-    const project = projectById.get(p.projectId);
-    return project ? [{ amount: p.amount, paidOn: p.paidOn, currency: project.currency }] : [];
-  });
+  const taggedPayments = mergeEarnings(input.payments, projectById, input.standalonePayments ?? []);
   const byMonth = earningsByMonth(taggedPayments);
   const earnedThisMonth: MoneyByCurrency = { ...(byMonth.get(thisMonth) ?? {}) };
   const earnedThisYear: MoneyByCurrency = {};
@@ -469,6 +592,8 @@ export function buildDashboard(input: DashboardInput): DashboardData {
   // value (unweighted), and the card says so when one is in the pipeline.
   const pipelineValue: MoneyByCurrency = {};
   for (const p of openProspects) addMoney(pipelineValue, p.currency, p.estimatedValue);
+  const pipeline = pipelineBreakdown(input.prospects);
+  const expectedThisMonth = expectedMonthlyTotal(live);
   const pipelineIncludesRetainers = openProspects.some((p) => p.engagementKind === "retainer" && p.estimatedValue > 0);
 
   const followUps: FollowUpItem[] = openProspects
@@ -509,6 +634,8 @@ export function buildDashboard(input: DashboardInput): DashboardData {
       pendingBalance: convertMoney(pendingBalance, rates),
       pipelineValue: convertMoney(pipelineValue, rates),
       recurringBilledThisMonth: convertMoney(recurringBilledThisMonth, rates),
+      expectedThisMonth: convertMoney(expectedThisMonth, rates),
+      pipeline: convertPipeline(pipeline, rates),
       earningsSeries: convertedEarningsSeries(taggedPayments, months, rates),
       weeklyEarningsSeries: convertedWeeklyEarningsSeries(taggedPayments, weeks, rates),
     };
@@ -525,6 +652,9 @@ export function buildDashboard(input: DashboardInput): DashboardData {
     recurringBilledThisMonth,
     activeRetainers: live.filter((p) => p.kind === "retainer" && p.status === "active").length,
     pipelineValue,
+    expectedThisMonth,
+    pipeline,
+    topProspects: topProspects(input.prospects, input.rates ?? null),
     pipelineIncludesRetainers,
     converted,
     fxUnavailable: input.ratesUnavailable ?? (input.rates === null),

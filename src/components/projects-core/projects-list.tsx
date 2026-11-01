@@ -16,8 +16,8 @@ import { SimpleSelect } from "@/components/projects-core/simple-select";
 import { cn } from "@/lib/utils";
 import { formatIsoDate } from "@/lib/dates";
 import { KindBadge, KIND_SHORT } from "@/components/common/kind-badge";
-import { formatMoney, type Currency } from "@/lib/money";
-import { UNIT_LABELS } from "@/lib/billing";
+import { type Currency } from "@/lib/money";
+import { RateWithMonthly } from "@/components/common/rate-with-monthly";
 import { PROJECT_KINDS, PROJECT_STATUSES, type ProjectKind, type ProjectStatus, type RateUnit } from "@/lib/types";
 
 export type ProjectRow = {
@@ -34,6 +34,8 @@ export type ProjectRow = {
   /** Retainers only. */
   rate: number;
   rateUnit: RateUnit | null;
+  hoursPerDay: number;
+  daysPerMonth: number;
   currency: Currency;
   deadline: string | null;
   archived: boolean;
@@ -55,9 +57,14 @@ const KIND_OPTIONS = [
 function Progress({ row, className }: { row: ProjectRow; className?: string }) {
   if (row.kind === "retainer") {
     return (
-      <span className="text-sm text-muted-foreground tabular-nums">
-        {formatMoney(row.rate, row.currency)} <span className="text-xs">/ {row.rateUnit ? UNIT_LABELS[row.rateUnit].singular : "hour"}</span>
-      </span>
+      <RateWithMonthly
+        rate={row.rate}
+        unit={row.rateUnit}
+        currency={row.currency}
+        hoursPerDay={row.hoursPerDay}
+        daysPerMonth={row.daysPerMonth}
+        className="text-sm text-muted-foreground"
+      />
     );
   }
   return (

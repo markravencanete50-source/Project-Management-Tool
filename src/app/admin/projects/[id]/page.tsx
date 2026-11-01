@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { DetailGrid, DetailItem } from "@/components/common/detail";
 import { InitialsAvatar } from "@/components/common/initials-avatar";
 import { KindBadge } from "@/components/common/kind-badge";
+import { RateWithMonthly } from "@/components/common/rate-with-monthly";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -78,6 +79,17 @@ export default async function ProjectDetailPage({ params, searchParams }: PagePr
             )}
             <KindBadge kind={project.kind} />
             <ProjectStatusBadge status={project.status} />
+            {project.kind === "retainer" && project.rateUnit ? (
+              <RateWithMonthly
+                rate={project.rate}
+                unit={project.rateUnit}
+                currency={project.currency}
+                hoursPerDay={project.hoursPerDay}
+                daysPerMonth={project.daysPerMonth}
+                layout="inline"
+                className="text-sm font-medium text-foreground"
+              />
+            ) : null}
             {inRevision ? (
               <Badge variant="warning" dot>
                 In revision
@@ -208,7 +220,13 @@ async function DerivedOverview({ projectId }: { projectId: string }) {
           <DetailItem label="Currency">{project.currency}</DetailItem>
           {project.kind === "retainer" && project.rateUnit ? (
             <DetailItem label="Rate">
-              {formatMoney(project.rate, currency)} per {UNIT_LABELS[project.rateUnit].singular}
+              <RateWithMonthly
+                rate={project.rate}
+                unit={project.rateUnit}
+                currency={currency}
+                hoursPerDay={project.hoursPerDay}
+                daysPerMonth={project.daysPerMonth}
+              />
             </DetailItem>
           ) : (
             <DetailItem label="Billing">{project.rate > 0 ? `Per task, when done (default ${formatMoney(project.rate, currency)})` : "Per task, when done"}</DetailItem>
@@ -236,7 +254,13 @@ async function DerivedOverview({ projectId }: { projectId: string }) {
       <div className="flex flex-col gap-6">
         <dl className="stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Fact label="Rate" hint={`Billed automatically each ${unit}`}>
-            {formatMoney(project.rate, currency)} <span className="text-sm font-normal text-muted-foreground">per {unit}</span>
+            <RateWithMonthly
+              rate={project.rate}
+              unit={unit}
+              currency={currency}
+              hoursPerDay={project.hoursPerDay}
+              daysPerMonth={project.daysPerMonth}
+            />
           </Fact>
           <Fact label={`This ${unit}`} hint={currentLine ? "In progress, due on its last day" : "Billing has ended"}>
             {formatMoney(currentLine?.amountDue ?? 0, currency)}
@@ -286,7 +310,13 @@ async function DerivedOverview({ projectId }: { projectId: string }) {
       <div className="flex flex-col gap-6">
         <dl className="stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Fact label="Rate" hint={`Billed per ${UNIT_LABELS[unit].singular}, monthly in arrears`}>
-            {formatMoney(project.rate, currency)}
+            <RateWithMonthly
+              rate={project.rate}
+              unit={unit}
+              currency={currency}
+              hoursPerDay={project.hoursPerDay}
+              daysPerMonth={project.daysPerMonth}
+            />
           </Fact>
           <Fact
             label="This month"
